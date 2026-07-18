@@ -110,6 +110,20 @@ class OrderMessagesRepository {
             rows.map(OrderMessage.fromSupabase).toList(growable: false));
   }
 
+  /// Every message across the caller's visible orders (RLS scopes the rows:
+  /// staff see all, a customer sees only their own orders' chats), newest first.
+  /// Powers the customer inbox — one stream over all their order chats.
+  Stream<List<OrderMessage>> watchVisible() {
+    assert(_supabase != null,
+        'watchVisible is not available on a forTest instance');
+    return _supabase!
+        .from('order_messages')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
+        .map((rows) =>
+            rows.map(OrderMessage.fromSupabase).toList(growable: false));
+  }
+
   Future<List<Map<String, dynamic>>> _insertRow(
       Map<String, dynamic> values) async {
     final override = _insertOverride;

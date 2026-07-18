@@ -1,3 +1,4 @@
+import 'package:amuwak_core/models.dart' show OrderMessagesRepository;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -65,6 +66,12 @@ final proofEventsRepositoryProvider = Provider<ProofEventsRepository>(
 
 final statusEventsRepositoryProvider = Provider<StatusEventsRepository>(
   (ref) => StatusEventsRepository(ref.watch(supabaseClientProvider)),
+);
+
+/// Per-order chat (staff side). The shared repository from amuwak_core; staff
+/// send with senderKind='staff', senderId = their auth uid.
+final orderMessagesRepositoryProvider = Provider<OrderMessagesRepository>(
+  (ref) => OrderMessagesRepository(ref.watch(supabaseClientProvider)),
 );
 
 // Outbox + pull-dead-letter repos backing the offline write path. Watched by

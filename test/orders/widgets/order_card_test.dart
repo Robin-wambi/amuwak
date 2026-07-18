@@ -41,9 +41,36 @@ LaundryOrder _placeholder({OrderStatus status = OrderStatus.pendingPickup}) =>
       notes: '',
     );
 
+LaundryOrder _appOrder() => LaundryOrder(
+      orderId: 'o9',
+      orderCode: 'AMW-9',
+      customerName: 'Ada',
+      serviceType: ServiceType.washAndIron,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 'Today',
+      itemCount: 3,
+      phone: '0700',
+      address: 'Kira',
+      notes: '',
+      intakeMethod: 'customer_app',
+    );
+
 Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
+  group('customer-app attribution badge', () {
+    testWidgets('shows "Placed via app" for a customer_app order',
+        (tester) async {
+      await tester.pumpWidget(_host(OrderCard(order: _appOrder(), onTap: () {})));
+      expect(find.text('Placed via app'), findsOneWidget);
+    });
+
+    testWidgets('no badge for a rider/walk-in order', (tester) async {
+      await tester.pumpWidget(_host(OrderCard(order: _order(), onTap: () {})));
+      expect(find.text('Placed via app'), findsNothing);
+    });
+  });
+
   group('pending-sync placeholder (offline order with no AMW code yet)', () {
     testWidgets('never shows the raw UUID as the order reference',
         (tester) async {

@@ -6,6 +6,7 @@ import '../printing/label_printer.dart';
 import '../printing/printer_store.dart';
 import '../sync/orders_repository.dart';
 import '../sync/proof_events_repository.dart';
+import 'chat/order_chat_screen.dart';
 import 'order.dart';
 import 'payment/record_payment_sheet.dart';
 import 'pricing/pricing_section.dart';
@@ -424,6 +425,21 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: _handleBackNavigation,
           ),
+          actions: [
+            // Chat is only meaningful for an order a customer placed from the
+            // app (they have the app to receive the reply).
+            if (widget.order.intakeMethod == 'customer_app')
+              IconButton(
+                tooltip: 'Chat with customer',
+                icon: const Icon(Icons.chat_bubble_outline),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        OrderChatScreen(orderId: widget.order.orderId),
+                  ),
+                ),
+              ),
+          ],
         ),
         body: SafeArea(
           child: Column(
