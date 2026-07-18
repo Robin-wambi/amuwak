@@ -107,4 +107,55 @@ void main() {
       expect(() => repo.placeOrder(draft()), throwsStateError);
     });
   });
+
+  group('updateDetails', () {
+    test('calls customer_update_order_details with the mapped params', () async {
+      String? fn;
+      Map<String, dynamic>? params;
+      final repo = CustomerOrdersRepository.forTest(
+        clock: () => DateTime.utc(2026, 7, 18),
+        rpc: (f, p) async {
+          fn = f;
+          params = p;
+        },
+      );
+
+      await repo.updateDetails(
+        orderId: 'o1',
+        serviceType: ServiceType.dryCleaning,
+        address: 'New Addr',
+        itemCount: 5,
+        notes: 'gate code',
+        scheduledFor: DateTime.utc(2026, 7, 20, 9),
+      );
+
+      expect(fn, 'customer_update_order_details');
+      expect(params!['p_order_id'], 'o1');
+      expect(params!['p_service_type'], ServiceType.dryCleaning.toDbString());
+      expect(params!['p_address'], 'New Addr');
+      expect(params!['p_item_count'], 5);
+      expect(params!['p_notes'], 'gate code');
+      expect(params!['p_scheduled_for'],
+          DateTime.utc(2026, 7, 20, 9).toIso8601String());
+    });
+  });
+
+  group('cancel', () {
+    test('calls customer_cancel_order with the order id', () async {
+      String? fn;
+      Map<String, dynamic>? params;
+      final repo = CustomerOrdersRepository.forTest(
+        clock: () => DateTime.utc(2026, 7, 18),
+        rpc: (f, p) async {
+          fn = f;
+          params = p;
+        },
+      );
+
+      await repo.cancel('o1');
+
+      expect(fn, 'customer_cancel_order');
+      expect(params, {'p_order_id': 'o1'});
+    });
+  });
 }

@@ -21,6 +21,14 @@ class OrderDetailScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(async.valueOrNull?.orderCode ?? 'Order'),
+        actions: [
+          if (async.valueOrNull?.status == OrderStatus.pendingPickup)
+            IconButton(
+              tooltip: 'Edit order',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => context.go('/orders/$orderId/edit'),
+            ),
+        ],
       ),
       floatingActionButton: async.valueOrNull == null
           ? null
@@ -53,11 +61,57 @@ class OrderDetailScreen extends ConsumerWidget {
               AppCard(child: StatusTimeline(status: order.status)),
               const SizedBox(height: AppSpacing.lg),
               _PriceCard(order: order),
+              if (order.status == OrderStatus.pendingPickup) ...[
+                const SizedBox(height: AppSpacing.lg),
+                OutlinedButton.icon(
+                  onPressed: () => _confirmCancel(context, ref, order.orderId),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancel order'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
             ],
           );
         },
       ),
     );
+  }
+}
+
+/// Confirms then cancels (soft-deletes) a pending order via the repository.
+Future<void> _confirmCancel(
+    BuildContext context, WidgetRef ref, String orderId) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Cancel this order?'),
+      content: const Text(
+          'This withdraws your pickup request. You can’t undo this.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep order')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel order')),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  try {
+    await ref.read(customerOrdersRepositoryProvider).cancel(orderId);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Order cancelled')));
+      context.go('/');
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not cancel. ($e)')));
+    }
   }
 }
 

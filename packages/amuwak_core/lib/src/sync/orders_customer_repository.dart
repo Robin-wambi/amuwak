@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../orders/order.dart';
 import '../orders/order_status.dart';
+import '../orders/service_type.dart';
 import '../shared/order_code.dart';
 import 'supabase_payloads.dart';
 
@@ -19,6 +20,12 @@ typedef OrderInsert =
 /// Test seam for the `next_order_code` RPC.
 typedef OrderCodeRpc = Future<Object?> Function();
 
+/// Test seam for the edit/cancel RPCs (`customer_update_order_details`,
+/// `customer_cancel_order`): given the function name + params, stands in for the
+/// live `SupabaseClient.rpc` call.
+typedef CustomerOrderRpc = Future<void> Function(
+    String fn, Map<String, dynamic> params);
+
 /// Read + place repository for a customer's OWN orders — ONLINE-ONLY (Supabase
 /// realtime `.stream()` reads; a direct RLS-gated insert to place an order).
 ///
@@ -33,7 +40,8 @@ class CustomerOrdersRepository {
   })  : _supabase = supabase,
         _clock = clock ?? DateTime.now,
         _insertOverride = null,
-        _rpcOverride = null;
+        _rpcOverride = null,
+        _editOverride = null;
 
   /// Test seam: drive [placeOrder] (RPC → payload shape → no-write [StateError])
   /// without a live SupabaseClient. Read methods assert the client is present.
@@ -41,15 +49,18 @@ class CustomerOrdersRepository {
     required DateTime Function() clock,
     OrderInsert? insertRow,
     OrderCodeRpc? nextOrderCode,
+    CustomerOrderRpc? rpc,
   })  : _supabase = null,
         _clock = clock,
         _insertOverride = insertRow,
-        _rpcOverride = nextOrderCode;
+        _rpcOverride = nextOrderCode,
+        _editOverride = rpc;
 
   final SupabaseClient? _supabase;
   final DateTime Function() _clock;
   final OrderInsert? _insertOverride;
   final OrderCodeRpc? _rpcOverride;
+  final CustomerOrderRpc? _editOverride;
 
   /// Live list of the customer's own orders, newest activity first via
   /// `created_at`. RLS (`orders_customer_read`) already scopes to this customer,
@@ -148,4 +159,40 @@ class CustomerOrdersRepository {
     }
     return order.orderId;
   }
+
+  Future<void> _rpc(String fn, Map<String, dynamic> params) async {
+    final override = _editOverride;
+    if (override != null) return override(fn, params);
+    assert(_supabase != null,
+        'forTest instance has no rpc — pass one to '
+        'CustomerOrdersRepository.forTest(rpc: ...)');
+    await _supabase!.rpc(fn, params: params);
+  }
+
+  /// Amends the descriptive details of the customer's own order via the
+  /// `customer_update_order_details` RPC. Server-side the RPC rejects anything
+  /// but the caller's own still-pending order and touches only these fields —
+  /// never price, status, or fulfilment. Throws if the order isn't editable.
+  Future<void> updateDetails({
+    required String orderId,
+    required ServiceType serviceType,
+    required String address,
+    required int itemCount,
+    String notes = '',
+    DateTime? scheduledFor,
+  }) =>
+      _rpc('customer_update_order_details', {
+        'p_order_id': orderId,
+        'p_service_type': serviceType.toDbString(),
+        'p_address': address,
+        'p_item_count': itemCount,
+        'p_notes': notes,
+        'p_scheduled_for': scheduledFor?.toUtc().toIso8601String(),
+      });
+
+  /// Cancels (soft-deletes) the customer's own order via the
+  /// `customer_cancel_order` RPC. Only a still-pending order the caller owns can
+  /// be cancelled; throws otherwise.
+  Future<void> cancel(String orderId) =>
+      _rpc('customer_cancel_order', {'p_order_id': orderId});
 }

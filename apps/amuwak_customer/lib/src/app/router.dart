@@ -7,6 +7,7 @@ import '../auth/login_screen.dart';
 import '../auth/signup_screen.dart';
 import '../chat/order_chat_screen.dart';
 import '../inbox/inbox_screen.dart';
+import '../orders/edit_order_screen.dart';
 import '../orders/my_orders_screen.dart';
 import '../orders/order_detail_screen.dart';
 import '../orders/place_order/place_order_screen.dart';
@@ -58,6 +59,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/orders/:id',
         builder: (_, state) =>
             OrderDetailScreen(orderId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/orders/:id/edit',
+        builder: (_, state) =>
+            EditOrderScreen(orderId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/orders/:id/chat',
