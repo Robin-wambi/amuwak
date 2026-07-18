@@ -61,7 +61,7 @@ class OrdersRepository {
         grouped.putIfAbsent(e.orderId, () => <ProofEvent>[]).add(e);
       }
       return rows
-          .map((r) => LaundryOrder.fromDriftRow(r, grouped[r.id] ?? const []))
+          .map((r) => LaundryOrderDriftX.fromDriftRow(r, grouped[r.id] ?? const []))
           .toList(growable: false);
     });
   }
@@ -77,7 +77,7 @@ class OrdersRepository {
       final events = await (_db.select(_db.proofEvents)
             ..where((t) => t.orderId.equals(orderId)))
           .get();
-      return LaundryOrder.fromDriftRow(row, events);
+      return LaundryOrderDriftX.fromDriftRow(row, events);
     });
   }
 
@@ -96,7 +96,7 @@ class OrdersRepository {
       grouped.putIfAbsent(e.orderId, () => <ProofEvent>[]).add(e);
     }
     return rows
-        .map((r) => LaundryOrder.fromDriftRow(r, grouped[r.id] ?? const []))
+        .map((r) => LaundryOrderDriftX.fromDriftRow(r, grouped[r.id] ?? const []))
         .toList(growable: false);
   }
 

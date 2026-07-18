@@ -73,7 +73,7 @@ drift.ProofEvent _proofRow({
 }
 
 void main() {
-  group('LaundryOrder.fromDriftRow', () {
+  group('LaundryOrderDriftX.fromDriftRow', () {
     test('maps each Postgres status string to the matching OrderStatus enum', () {
       // Six Postgres statuses (pending_pickup, received, in_progress, ready,
       // out_for_delivery, completed) collapse to the UI's four enum values.
@@ -89,7 +89,7 @@ void main() {
       };
       cases.forEach((pgStatus, expected) {
         final row = _orderRow(status: pgStatus);
-        final mapped = LaundryOrder.fromDriftRow(row, const []);
+        final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
         expect(mapped.status, expected, reason: 'for "$pgStatus"');
       });
     });
@@ -101,7 +101,7 @@ void main() {
       // on the app-level LaundryOrder + Drift row.
       for (final s in OrderStatus.values) {
         final row = _orderRow(status: s.toDbString());
-        final mapped = LaundryOrder.fromDriftRow(row, const []);
+        final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
         expect(mapped.status, s, reason: 'for ${s.name} (db: ${s.toDbString()})');
       }
     });
@@ -111,7 +111,7 @@ void main() {
       // the orders stream — it degrades to pendingPickup.
       final row = _orderRow(status: 'banana');
       expect(
-        LaundryOrder.fromDriftRow(row, const []).status,
+        LaundryOrderDriftX.fromDriftRow(row, const []).status,
         OrderStatus.pendingPickup,
       );
     });
@@ -121,7 +121,7 @@ void main() {
         scheduledFor: DateTime(2026, 5, 19, 10, 30),
         createdAt: DateTime(2026, 5, 19, 8, 0),
       );
-      final mapped = LaundryOrder.fromDriftRow(row, const []);
+      final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
       // Past date relative to test "now" → weekday/month form.
       expect(mapped.timeLabel, contains('10:30 AM'));
       expect(mapped.timeLabel, contains('May'));
@@ -132,7 +132,7 @@ void main() {
         scheduledFor: null,
         createdAt: DateTime(2026, 5, 19, 14, 15),
       );
-      final mapped = LaundryOrder.fromDriftRow(row, const []);
+      final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
       expect(mapped.timeLabel, 'Pickup: now');
     });
 
@@ -159,7 +159,7 @@ void main() {
           notes: null,
         ),
       ];
-      final mapped = LaundryOrder.fromDriftRow(row, events);
+      final mapped = LaundryOrderDriftX.fromDriftRow(row, events);
       expect(mapped.proofEvents, hasLength(2));
       expect(mapped.proofEvents[0].type, ProofEventType.pickup);
       expect(mapped.proofEvents[0].capturedAt, pickupAt);
@@ -174,7 +174,7 @@ void main() {
     });
 
     test('returns a LaundryOrder with no proof events when given an empty list', () {
-      final mapped = LaundryOrder.fromDriftRow(_orderRow(), const []);
+      final mapped = LaundryOrderDriftX.fromDriftRow(_orderRow(), const []);
       expect(mapped.proofEvents, isEmpty);
     });
 
@@ -190,7 +190,7 @@ void main() {
           capturedAt: DateTime(2026, 5, 19, 10, 30),
         ),
       ];
-      final mapped = LaundryOrder.fromDriftRow(row, events);
+      final mapped = LaundryOrderDriftX.fromDriftRow(row, events);
       expect(mapped.proofEvents.single.type, ProofEventType.pickup);
     });
 
@@ -204,7 +204,7 @@ void main() {
         address: 'Bwaise',
         notes: 'Paid in cash at pickup.',
       );
-      final mapped = LaundryOrder.fromDriftRow(row, const []);
+      final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
       expect(mapped.orderId, 'AMW-1027');
       expect(mapped.customerName, 'Daniel M.');
       expect(mapped.serviceType, ServiceType.washOnly);
@@ -247,7 +247,7 @@ void main() {
         expressPctSnapshot: 0,
         paymentAmountUgx: 0,
       );
-      final mapped = LaundryOrder.fromDriftRow(row, const []);
+      final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
       expect(mapped.orderCode, equals(row.orderCode));
       expect(mapped.customerId, equals(row.customerId));
       expect(mapped.intakeMethod, equals(row.intakeMethod));
@@ -257,7 +257,7 @@ void main() {
 
     test('collapses an empty-string orderCode to the orderId fallback', () {
       final row = _orderRow(id: 'AMW-2048');
-      final mapped = LaundryOrder.fromDriftRow(
+      final mapped = LaundryOrderDriftX.fromDriftRow(
         row.copyWith(orderCode: ''),
         const [],
       );
@@ -266,7 +266,7 @@ void main() {
 
     test('collapses a whitespace-only orderCode to the orderId fallback', () {
       final row = _orderRow(id: 'AMW-2049');
-      final mapped = LaundryOrder.fromDriftRow(
+      final mapped = LaundryOrderDriftX.fromDriftRow(
         row.copyWith(orderCode: '   '),
         const [],
       );

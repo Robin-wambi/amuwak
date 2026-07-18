@@ -105,9 +105,9 @@ void main() {
     });
   });
 
-  group('LaundryOrder.fromDriftRow', () {
+  group('LaundryOrderDriftX.fromDriftRow', () {
     test('reads payment_amount_ugx from the row', () {
-      final mapped = LaundryOrder.fromDriftRow(
+      final mapped = LaundryOrderDriftX.fromDriftRow(
         _driftOrderRow(paymentAmountUgx: 7000),
         const [],
       );
