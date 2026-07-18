@@ -61,6 +61,59 @@ void main() {
     });
   });
 
+  group('signUpWithEmailPassword', () {
+    test('forwards a trimmed, lower-cased email and the password', () async {
+      when(() => goTrue.signUp(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          )).thenAnswer((_) async => _FakeAuthResponse());
+
+      await service.signUpWithEmailPassword(
+        email: '  New@Amuwak.CO  ',
+        password: 'secret-pass',
+      );
+
+      verify(() => goTrue.signUp(
+            email: 'new@amuwak.co',
+            password: 'secret-pass',
+          )).called(1);
+    });
+
+    test('wraps AuthException in AuthFailure', () async {
+      when(() => goTrue.signUp(
+            email: any(named: 'email'),
+            password: any(named: 'password'),
+          )).thenThrow(const AuthException('User already registered'));
+
+      await expectLater(
+        service.signUpWithEmailPassword(email: 'a@b.co', password: 'x'),
+        throwsA(isA<AuthFailure>().having(
+          (e) => e.message,
+          'message',
+          'User already registered',
+        )),
+      );
+    });
+  });
+
+  group('refreshSession', () {
+    test('delegates to GoTrue.refreshSession', () async {
+      when(() => goTrue.refreshSession())
+          .thenAnswer((_) async => _FakeAuthResponse());
+      await service.refreshSession();
+      verify(() => goTrue.refreshSession()).called(1);
+    });
+
+    test('wraps AuthException in AuthFailure', () async {
+      when(() => goTrue.refreshSession())
+          .thenThrow(const AuthException('refresh failed'));
+      await expectLater(
+        service.refreshSession(),
+        throwsA(isA<AuthFailure>()),
+      );
+    });
+  });
+
   group('updatePassword', () {
     test('calls updateUser with the new password', () async {
       when(() => goTrue.updateUser(any()))
