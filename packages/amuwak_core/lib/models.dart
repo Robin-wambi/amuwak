@@ -21,3 +21,10 @@ export 'src/orders/order.dart';
 export 'src/orders/proof_event.dart';
 export 'src/customers/customer.dart';
 export 'src/sync/supabase_payloads.dart';
+
+// Customer-facing, online-only data-access repositories (Supabase `.stream()`
+// reads + RLS-gated writes). Consumed by the customer app; the staff app keeps
+// its own Drift-backed repositories.
+export 'src/sync/orders_customer_repository.dart';
+export 'src/sync/order_messages_repository.dart';
+export 'src/sync/customer_profile_repository.dart';
