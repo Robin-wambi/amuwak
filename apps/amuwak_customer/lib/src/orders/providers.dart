@@ -15,3 +15,11 @@ final myOrdersProvider = StreamProvider.autoDispose<List<LaundryOrder>>((ref) {
   if (customerId == null) return Stream.value(const <LaundryOrder>[]);
   return ref.watch(customerOrdersRepositoryProvider).watchMine(customerId);
 });
+
+/// One order, live. Re-emits whenever staff advance its status or set a final
+/// weight, so the tracking screen updates without a refresh. Auto-disposes when
+/// the detail screen leaves.
+final orderDetailProvider =
+    StreamProvider.autoDispose.family<LaundryOrder?, String>((ref, orderId) {
+  return ref.watch(customerOrdersRepositoryProvider).watchById(orderId);
+});
