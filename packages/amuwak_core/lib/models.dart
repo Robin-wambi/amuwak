@@ -22,6 +22,12 @@ export 'src/orders/proof_event.dart';
 export 'src/customers/customer.dart';
 export 'src/sync/supabase_payloads.dart';
 
+// Global pricing configuration (singleton row) + its online read/update
+// repository. Drift-free; shared by the staff pricing screen and the customer
+// app's estimate.
+export 'src/pricing/pricing_settings.dart';
+export 'src/pricing/pricing_settings_repository.dart';
+
 // Customer-facing, online-only data-access repositories (Supabase `.stream()`
 // reads + RLS-gated writes). Consumed by the customer app; the staff app keeps
 // its own Drift-backed repositories.

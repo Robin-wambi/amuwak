@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../auth/login_screen.dart';
 import '../auth/signup_screen.dart';
 import '../orders/my_orders_screen.dart';
+import '../orders/place_order/place_order_screen.dart';
 
 /// Pure redirect policy for the customer app, extracted so it is unit-testable
 /// without pumping a live router. Returns the path to redirect to, or null to
@@ -48,7 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/orders/new',
-        builder: (_, __) => const _Stub(title: 'New order'),
+        builder: (_, __) => const PlaceOrderScreen(),
       ),
       GoRoute(
         path: '/orders/:id',
