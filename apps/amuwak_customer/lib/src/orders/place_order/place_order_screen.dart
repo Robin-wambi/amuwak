@@ -24,7 +24,9 @@ class _PlaceOrderScreenState extends ConsumerState<PlaceOrderScreen> {
   final _detailsKey = GlobalKey<FormState>();
   final _weight = TextEditingController();
   final _address = TextEditingController();
-  final _items = TextEditingController();
+  // Pre-filled to 1: the orders table requires item_count > 0, and staff
+  // re-count the actual items at intake anyway.
+  final _items = TextEditingController(text: '1');
   final _notes = TextEditingController();
 
   ServiceType _serviceType = ServiceType.washAndIron;
@@ -65,14 +67,18 @@ class _PlaceOrderScreenState extends ConsumerState<PlaceOrderScreen> {
         fulfillmentMethod: _fulfillment,
         address: _includeDelivery ? _address.text.trim() : '',
         estimatedWeightKg: _estWeight,
-        itemCount: int.tryParse(_items.text.trim()) ?? 0,
+        // Guaranteed >= 1 by the field validator; guard anyway so a stray 0
+        // can't trip the orders_item_count_check DB constraint.
+        itemCount: (int.tryParse(_items.text.trim()) ?? 1).clamp(1, 100000),
         notes: _notes.text.trim(),
         isExpress: _express,
       );
       if (mounted) context.go('/orders/$id');
-    } catch (_) {
+    } catch (e) {
+      // TODO: map known backend errors to friendly copy before release; for now
+      // surface the cause so failures are diagnosable rather than opaque.
       if (mounted) {
-        setState(() => _error = 'Could not place your order. Try again.');
+        setState(() => _error = 'Could not place your order. ($e)');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -215,8 +221,12 @@ class _PlaceOrderScreenState extends ConsumerState<PlaceOrderScreen> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: const InputDecoration(
-              labelText: 'Number of items (optional)',
+              labelText: 'Number of items',
+              helperText: 'A rough count — we confirm it at the shop.',
             ),
+            validator: (v) => (int.tryParse((v ?? '').trim()) ?? 0) < 1
+                ? 'Enter at least 1 item'
+                : null,
           ),
           const SizedBox(height: AppSpacing.md),
           SwitchListTile(
