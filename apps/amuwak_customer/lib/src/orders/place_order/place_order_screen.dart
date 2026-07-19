@@ -14,7 +14,18 @@ import 'place_order_controller.dart';
 /// Two-step wizard: enter pickup details, then review the (provisional) price
 /// estimate and place the order.
 class PlaceOrderScreen extends ConsumerStatefulWidget {
-  const PlaceOrderScreen({super.key});
+  const PlaceOrderScreen({
+    super.key,
+    this.initialService,
+    this.initialExpress = false,
+  });
+
+  /// Pre-selected service when opened from a Discover tile; defaults to
+  /// [ServiceType.washAndIron] when null.
+  final ServiceType? initialService;
+
+  /// Pre-tick the express toggle (from the "Express clean" quick action).
+  final bool initialExpress;
 
   @override
   ConsumerState<PlaceOrderScreen> createState() => _PlaceOrderScreenState();
@@ -29,12 +40,19 @@ class _PlaceOrderScreenState extends ConsumerState<PlaceOrderScreen> {
   final _items = TextEditingController(text: '1');
   final _notes = TextEditingController();
 
-  ServiceType _serviceType = ServiceType.washAndIron;
+  late ServiceType _serviceType;
   String _fulfillment = 'delivery';
-  bool _express = false;
+  late bool _express;
   int _step = 0;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _serviceType = widget.initialService ?? ServiceType.washAndIron;
+    _express = widget.initialExpress;
+  }
 
   @override
   void dispose() {

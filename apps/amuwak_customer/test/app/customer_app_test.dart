@@ -26,11 +26,15 @@ void main() {
     expect(find.text('Sign in'), findsOneWidget);
   });
 
-  testWidgets('signed-in customer lands on the home (my orders) route',
+  testWidgets('signed-in customer lands on the Discover dashboard',
       (tester) async {
     await tester.pumpWidget(app(userId: 'user-1'));
-    await tester.pumpAndSettle();
+    // The Discover header's sheen animates forever, so pumpAndSettle would hang.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('My orders'), findsOneWidget);
+    // Home tab: a service tile and the dashboard's bottom-nav destinations.
+    expect(find.text('Wash & Iron'), findsOneWidget);
+    expect(find.text('Payments'), findsOneWidget);
   });
 }
