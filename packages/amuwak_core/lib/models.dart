@@ -27,6 +27,8 @@ export 'src/sync/supabase_payloads.dart';
 // app's estimate.
 export 'src/pricing/pricing_settings.dart';
 export 'src/pricing/pricing_settings_repository.dart';
+export 'src/pricing/catalog_item.dart';
+export 'src/pricing/catalog_repository.dart';
 
 // Customer-facing, online-only data-access repositories (Supabase `.stream()`
 // reads + RLS-gated writes). Consumed by the customer app; the staff app keeps
