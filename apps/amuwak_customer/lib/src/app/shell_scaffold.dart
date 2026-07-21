@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../sync/sync_banner.dart';
+
 /// The persistent dashboard frame: a bottom [NavigationBar] over the four
 /// customer tabs (Home / Orders / Payments / Profile). Each tab keeps its own
 /// navigation state via the [StatefulNavigationShell] from the router's
-/// [StatefulShellRoute]. Bar styling comes from `buildAmuwakTheme`.
+/// [StatefulShellRoute]. Bar styling comes from `buildAmuwakTheme`. A slim
+/// [SyncBanner] rides above the tabs to surface offline / syncing status.
 class ShellScaffold extends StatelessWidget {
   const ShellScaffold({super.key, required this.navigationShell});
 
@@ -13,7 +16,12 @@ class ShellScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,
+      body: Column(
+        children: [
+          const SyncBanner(),
+          Expanded(child: navigationShell),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) => navigationShell.goBranch(

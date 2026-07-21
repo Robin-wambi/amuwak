@@ -25,11 +25,22 @@ dependencies:
   # (mirrors the staff app's poor-network resilience).
   http: ^1.2.0
 
+  # Offline foundation (targeted resilience): a local Drift DB is the cart's
+  # source of truth + an outbox queues writes (checkout, cart mirror, photo
+  # upload) to drain when connectivity returns. Mirrors the staff app's stack.
+  drift: ^2.18.0
+  drift_flutter: ^0.2.0
+  sqlite3_flutter_libs: ^0.5.0
+  path: ^1.9.0
+  connectivity_plus: ^6.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   mocktail: ^1.0.4
+  drift_dev: ^2.18.0
+  build_runner: ^2.4.0
 
 flutter:
   uses-material-design: true

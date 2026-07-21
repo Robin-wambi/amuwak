@@ -1,5 +1,6 @@
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_customer/src/app/customer_app.dart';
+import 'package:amuwak_customer/src/sync/sync_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,11 @@ void main() {
           // Empty stream so routerProvider's listen never builds AuthService.
           authStateProvider.overrideWith((ref) => Stream<AuthState>.empty()),
           currentUserIdProvider.overrideWithValue(userId),
+          // The signed-in route reaches the shell's SyncBanner — keep it off a
+          // real Drift DB / connectivity_plus (and any pending stream timer).
+          onlineProvider.overrideWith((ref) => Stream.value(true)),
+          pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
+          outboxDriverProvider.overrideWith((ref) {}),
         ],
         child: const CustomerApp(),
       );

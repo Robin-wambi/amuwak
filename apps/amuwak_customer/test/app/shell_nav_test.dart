@@ -4,10 +4,20 @@ import 'package:amuwak_customer/src/app/customer_app.dart';
 import 'package:amuwak_customer/src/auth/customer_session.dart';
 import 'package:amuwak_customer/src/orders/providers.dart';
 import 'package:amuwak_customer/src/pricing/pricing_providers.dart';
+import 'package:amuwak_customer/src/sync/sync_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Overrides the three providers the shell's SyncBanner reads, so it renders
+/// without opening a real Drift DB (path_provider), hitting connectivity_plus,
+/// or leaving a stream timer pending at teardown.
+List<Override> offlineTestOverrides() => [
+      onlineProvider.overrideWith((ref) => Stream.value(true)),
+      pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
+      outboxDriverProvider.overrideWith((ref) {}),
+    ];
 
 /// Drives the real router/shell with every Supabase-touching provider overridden
 /// so the four bottom-nav tabs render without a live backend.
@@ -37,6 +47,7 @@ void main() {
             ),
           ),
           myOrdersProvider.overrideWith((ref) => Stream.value(const [])),
+          ...offlineTestOverrides(),
         ],
         child: const CustomerApp(),
       );
