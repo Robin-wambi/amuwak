@@ -44,7 +44,7 @@ UPDATE carts SET items = '[{"x":1}]'::jsonb
 RESET ROLE;
 SELECT is((SELECT items FROM carts
            WHERE customer_id = '00000000-0000-0000-0000-00000000c201'),
-          '[]'::jsonb, "Cust2's update of Cust1 cart is a no-op");
+          '[]'::jsonb, 'Cust2 update of Cust1 cart is a no-op');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -29,7 +29,7 @@ PREPARE write_forge AS
   VALUES ('customer-uploads',
           'customer/00000000-0000-0000-0000-00000000c202/cart/y.jpg');
 SELECT throws_ok('write_forge', '42501', NULL,
-  "Cust1 cannot write under Cust2's prefix");
+  'Cust1 cannot write under Cust2 prefix');
 
 -- ---- Cust2 cannot read Cust1's object ----
 RESET ROLE;
