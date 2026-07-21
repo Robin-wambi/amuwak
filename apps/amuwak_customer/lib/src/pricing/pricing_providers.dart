@@ -13,3 +13,15 @@ final pricingSettingsRepositoryProvider = Provider<PricingSettingsRepository>(
 final pricingSettingsProvider = FutureProvider<PricingSettings>(
   (ref) => ref.watch(pricingSettingsRepositoryProvider).fetch(),
 );
+
+final catalogRepositoryProvider = Provider<CatalogRepository>(
+  (ref) => CatalogRepository(ref.watch(supabaseClientProvider)),
+);
+
+/// Active catalog items (fixed per-piece prices) for the cart's specialty-item
+/// picker. One-shot read under `pricing_catalog_items_customer_read`. Requires
+/// connectivity; piece items can't be added offline until the catalog is cached
+/// (a later addition) — weight items always work offline.
+final catalogItemsProvider = FutureProvider<List<CatalogItem>>(
+  (ref) => ref.watch(catalogRepositoryProvider).fetchActive(),
+);
