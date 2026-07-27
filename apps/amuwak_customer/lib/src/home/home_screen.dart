@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/customer_session.dart';
+import '../cart/add_item_sheets.dart';
+import '../cart/cart_providers.dart';
 import '../pricing/pricing_providers.dart';
 
 /// The customer's landing dashboard ("Discover"): a branded header, the two
@@ -83,12 +85,31 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
+          const _CartButton(),
           IconButton(
             tooltip: 'Inbox',
             onPressed: () => context.go('/inbox'),
             icon: const Icon(Icons.notifications_none, color: AppColors.white),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CartButton extends ConsumerWidget {
+  const _CartButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(cartCountProvider);
+    return IconButton(
+      tooltip: 'Cart',
+      onPressed: () => context.push('/cart'),
+      icon: Badge(
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        child: const Icon(Icons.shopping_cart_outlined, color: AppColors.white),
       ),
     );
   }
@@ -185,7 +206,7 @@ class _ServiceGrid extends StatelessWidget {
   }
 }
 
-class _ServiceTile extends StatelessWidget {
+class _ServiceTile extends ConsumerWidget {
   const _ServiceTile({
     required this.service,
     required this.icon,
@@ -197,10 +218,10 @@ class _ServiceTile extends StatelessWidget {
   final String rateHint;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     return AppCard(
-      onTap: () => context.go('/orders/new?service=${service.name}'),
+      onTap: () => showAddLaundrySheet(context, ref, initialService: service),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,

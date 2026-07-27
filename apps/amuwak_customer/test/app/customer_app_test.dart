@@ -1,5 +1,6 @@
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_customer/src/app/customer_app.dart';
+import 'package:amuwak_customer/src/cart/checkout_service.dart';
 import 'package:amuwak_customer/src/sync/sync_providers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ void main() {
           onlineProvider.overrideWith((ref) => Stream.value(true)),
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
           outboxDriverProvider.overrideWith((ref) {}),
+          placeOrderHandlerProvider.overrideWith((ref) {}),
         ],
         child: const CustomerApp(),
       );

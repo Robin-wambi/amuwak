@@ -2,6 +2,7 @@ import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../cart/checkout_service.dart';
 import 'sync_providers.dart';
 
 /// A slim status strip: shows an offline notice (your changes are saved and will
@@ -12,8 +13,10 @@ class SyncBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Keep the outbox draining while any screen showing the banner is mounted.
+    // Keep the outbox draining while any screen showing the banner is mounted,
+    // and register the place-order handler so a queued order syncs on launch.
     ref.watch(outboxDriverProvider);
+    ref.watch(placeOrderHandlerProvider);
 
     final online = ref.watch(onlineProvider).valueOrNull ?? true;
     final pending = ref.watch(pendingSyncCountProvider).valueOrNull ?? 0;
