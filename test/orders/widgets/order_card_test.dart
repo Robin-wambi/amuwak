@@ -69,6 +69,35 @@ void main() {
       await tester.pumpWidget(_host(OrderCard(order: _order(), onTap: () {})));
       expect(find.text('Placed via app'), findsNothing);
     });
+
+    testWidgets('flags damage the customer photographed, so it is spotted in '
+        'the list', (tester) async {
+      await tester.pumpWidget(_host(OrderCard(
+        order: _appOrder().copyWith(cartItems: const [
+          CartSnapshotItem(kind: 'weight', name: 'Wash & Iron', estKg: 6),
+          CartSnapshotItem(
+              kind: 'piece', name: 'Jacket', photoKey: 'customer/c/cart/a.jpg'),
+          CartSnapshotItem(
+              kind: 'piece', name: 'Shirt', photoKey: 'customer/c/cart/b.jpg'),
+        ]),
+        onTap: () {},
+      )));
+
+      expect(find.text('2 flagged'), findsOneWidget);
+    });
+
+    testWidgets('no damage indicator when the cart has no photos',
+        (tester) async {
+      await tester.pumpWidget(_host(OrderCard(
+        order: _appOrder().copyWith(cartItems: const [
+          CartSnapshotItem(kind: 'weight', name: 'Wash & Iron', estKg: 6),
+        ]),
+        onTap: () {},
+      )));
+
+      expect(find.text('Placed via app'), findsOneWidget);
+      expect(find.textContaining('flagged'), findsNothing);
+    });
   });
 
   group('pending-sync placeholder (offline order with no AMW code yet)', () {

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:amuwak_core/amuwak_core.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -644,5 +647,59 @@ void main() {
         expect(wm, isNull);
       },
     );
+  });
+
+  group("a customer order's cart snapshot", () {
+    Map<String, dynamic> orderRow({Object? cartItems}) => {
+          'id': 'AMW-CART',
+          'order_code': 'AMW-CART',
+          'customer_name': 'Jane',
+          'phone': '+256',
+          'address': 'addr',
+          'service_type': 'wash',
+          'status': 'pending_pickup',
+          'intake_method': 'customer_app',
+          'fulfillment_method': 'delivery',
+          'item_count': 3,
+          'intake_recorded_by': 's-1',
+          'created_by': 's-1',
+          'created_at': '2026-07-27T10:00:00Z',
+          'updated_at': '2026-07-27T10:00:00Z',
+          if (cartItems != null) 'cart_items': cartItems,
+        };
+
+    Future<String> pull(Map<String, dynamic> row) async {
+      final fake = _FakeFetch();
+      fake.queued['orders'] = [
+        [row]
+      ];
+      await SyncPuller(db: db, fetch: fake.call).pullTable(
+          const SyncTable(name: 'orders', watermarkColumn: 'updated_at'));
+      final stored = await (db.select(db.orders)
+            ..where((t) => t.id.equals('AMW-CART')))
+          .getSingle();
+      return stored.cartItems;
+    }
+
+    test('reaches the device, so staff see it without a round-trip', () async {
+      final stored = await pull(orderRow(cartItems: [
+        {'kind': 'weight', 'name': 'Wash & Iron', 'est_kg': 6, 'qty': 1},
+        {
+          'kind': 'piece',
+          'name': 'Jacket',
+          'qty': 2,
+          'photo_key': 'customer/c1/cart/p1.jpg',
+        },
+      ]));
+
+      final items = parseCartSnapshot(jsonDecode(stored));
+      expect(items.map((i) => i.name), ['Wash & Iron', 'Jacket']);
+      expect(items.last.photoKey, 'customer/c1/cart/p1.jpg');
+    });
+
+    test('a rider order (no cart_items at all) stores an empty snapshot',
+        () async {
+      expect(parseCartSnapshot(jsonDecode(await pull(orderRow()))), isEmpty);
+    });
   });
 }

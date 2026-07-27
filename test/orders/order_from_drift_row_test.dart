@@ -16,6 +16,7 @@ drift.Order _orderRow({
   String phone = '+256 700 123 456',
   String address = 'Kikoni',
   String notes = '',
+  String cartItems = '[]',
 }) {
   final created = createdAt ?? DateTime.utc(2026, 5, 19, 10, 0);
   return drift.Order(
@@ -47,6 +48,7 @@ drift.Order _orderRow({
     expressFlatSnapshotUgx: 0,
     expressPctSnapshot: 0,
     paymentAmountUgx: 0,
+    cartItems: cartItems,
   );
 }
 
@@ -246,6 +248,7 @@ void main() {
         expressFlatSnapshotUgx: 0,
         expressPctSnapshot: 0,
         paymentAmountUgx: 0,
+        cartItems: '[]',
       );
       final mapped = LaundryOrderDriftX.fromDriftRow(row, const []);
       expect(mapped.orderCode, equals(row.orderCode));
@@ -271,6 +274,41 @@ void main() {
         const [],
       );
       expect(mapped.orderCode, 'AMW-2049');
+    });
+  });
+
+  group("the customer's cart snapshot", () {
+    test('hydrates items, quantities, notes and flagged photos', () {
+      final mapped = LaundryOrderDriftX.fromDriftRow(
+        _orderRow(cartItems: '''
+          [
+            {"kind":"weight","name":"Wash & Iron","service_type":"washAndIron",
+             "est_kg":6,"qty":1,"note":"delicate"},
+            {"kind":"piece","name":"Jacket","unit_ugx":8000,"qty":2,
+             "photo_key":"customer/c1/cart/p1.jpg"}
+          ]
+        '''),
+        const [],
+      );
+
+      expect(mapped.cartItems, hasLength(2));
+      expect(mapped.cartItems.first.serviceType, ServiceType.washAndIron);
+      expect(mapped.cartItems.first.subtitle, '~6 kg');
+      expect(mapped.cartItems.first.note, 'delicate');
+      expect(mapped.cartItems.last.subtitle, '× 2');
+      expect(mapped.flaggedCartItems.single.name, 'Jacket');
+    });
+
+    test('a rider order has an empty snapshot and nothing flagged', () {
+      final mapped = LaundryOrderDriftX.fromDriftRow(_orderRow(), const []);
+      expect(mapped.cartItems, isEmpty);
+      expect(mapped.flaggedCartItems, isEmpty);
+    });
+
+    test('corrupt JSON degrades to empty instead of erroring the stream', () {
+      final mapped =
+          LaundryOrderDriftX.fromDriftRow(_orderRow(cartItems: '{oops'), const []);
+      expect(mapped.cartItems, isEmpty);
     });
   });
 }

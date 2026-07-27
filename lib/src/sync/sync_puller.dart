@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:drift/drift.dart';
@@ -271,6 +272,11 @@ class SyncPuller {
         createdAt: Value(_dt(r['created_at'])),
         updatedAt: Value(_dt(r['updated_at'])),
         deletedAt: Value(_dtNullable(r['deleted_at'])),
+        // The customer's itemized cart (jsonb → the JSON text column). Kept so
+        // staff can see what a customer-app order contains, and which garments
+        // they flagged, without a network round-trip. Absent/null for rider and
+        // in-shop orders.
+        cartItems: Value(jsonEncode(r['cart_items'] ?? const [])),
       );
 
   ProofEventsCompanion _proofEventsFromJson(Map<String, dynamic> r) =>

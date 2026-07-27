@@ -9,7 +9,9 @@ import '../../sync/proof_events_repository.dart';
 import '../order.dart';
 import '../proof_event.dart';
 import '../../pricing/catalog_item.dart';
+import '../customer_photo_url.dart';
 import '../pricing/pricing_section.dart';
+import '../widgets/customer_items_section.dart';
 import '../../printing/label_printer.dart';
 import '../../printing/printer_store.dart';
 import 'printable_tag.dart';
@@ -35,6 +37,7 @@ class PickupCaptureScreen extends StatefulWidget {
     this.printerStore,
     this.captureTag = captureTagPng,
     this.catalogItems = const [],
+    this.customerPhotoUrl,
   });
 
   final LaundryOrder order;
@@ -60,6 +63,10 @@ class PickupCaptureScreen extends StatefulWidget {
   /// Active catalog items offered in the special-items "Add item" picker. Empty
   /// falls back to the free-form entry sheet.
   final List<CatalogItem> catalogItems;
+
+  /// Signs URLs for the customer's damage photos. Null renders placeholders, so
+  /// a rider with no signal still sees the declared items.
+  final CustomerPhotoUrlResolver? customerPhotoUrl;
 
   @override
   State<PickupCaptureScreen> createState() => _PickupCaptureScreenState();
@@ -323,6 +330,16 @@ class _PickupCaptureScreenState extends State<PickupCaptureScreen> {
           'Expected ${widget.order.itemCount} items · ${widget.order.address}',
           style: const TextStyle(color: AppColors.secondaryText),
         ),
+        // What the customer declared in their cart, before the rider counts —
+        // including photos of anything they flagged as already damaged.
+        if (widget.order.cartItems.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          CustomerItemsSection(
+            items: widget.order.cartItems,
+            photoUrl: widget.customerPhotoUrl,
+            title: 'Customer declared',
+          ),
+        ],
         const SizedBox(height: 20),
         Text(
           'How many items?',

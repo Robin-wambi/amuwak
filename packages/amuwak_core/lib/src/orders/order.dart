@@ -1,3 +1,4 @@
+import 'cart_snapshot_item.dart';
 import 'order_status.dart';
 import 'proof_event.dart';
 import 'service_type.dart';
@@ -31,6 +32,7 @@ class LaundryOrder {
     this.expressFlatSnapshotUgx = 0,
     this.expressPctSnapshot = 0,
     this.paymentAmountUgx = 0,
+    this.cartItems = const [],
   }) : orderCode = orderCode ?? orderId;
 
   final String orderId;
@@ -71,6 +73,18 @@ class LaundryOrder {
   /// and [isFullyPaid]), never stored, so it can't drift from a later total
   /// change. See Supabase migration 0031.
   final int paymentAmountUgx;
+
+  /// The itemized cart a customer-app order was checked out from
+  /// (`orders.cart_items`, migration `0050`) — empty for orders a rider or the
+  /// shop took. READ-ONLY on the staff side: it records what the customer said
+  /// they were sending (and which garments they flagged with a photo), while
+  /// staff still weigh and price the pickup with their own tools. Deliberately
+  /// absent from [orderUpsertPayload] so a staff write can never clobber it.
+  final List<CartSnapshotItem> cartItems;
+
+  /// Damage photos the customer attached to their cart lines, in order.
+  List<CartSnapshotItem> get flaggedCartItems =>
+      cartItems.where((i) => i.hasPhoto).toList(growable: false);
 
   /// Money still owed: [totalUgx] minus what's been collected, clamped so an
   /// over-collection (change handed back in cash) never reads as negative.
@@ -186,6 +200,8 @@ class LaundryOrder {
       // Same degrade-to-0 rule: a row predating the payment column reads as
       // "nothing collected yet" rather than erroring the stream.
       paymentAmountUgx: (row['payment_amount_ugx'] as num?)?.toInt() ?? 0,
+      // Empty for a rider/in-shop order, and for any row predating 0050.
+      cartItems: parseCartSnapshot(row['cart_items']),
     );
   }
 
@@ -294,6 +310,7 @@ class LaundryOrder {
     int? expressFlatSnapshotUgx,
     double? expressPctSnapshot,
     int? paymentAmountUgx,
+    List<CartSnapshotItem>? cartItems,
     bool clearEstimatedWeight = false,
     bool clearFinalWeight = false,
   }) {
@@ -330,6 +347,7 @@ class LaundryOrder {
           expressFlatSnapshotUgx ?? this.expressFlatSnapshotUgx,
       expressPctSnapshot: expressPctSnapshot ?? this.expressPctSnapshot,
       paymentAmountUgx: paymentAmountUgx ?? this.paymentAmountUgx,
+      cartItems: cartItems ?? this.cartItems,
     );
   }
 
@@ -371,6 +389,10 @@ class LaundryOrder {
     for (var i = 0; i < proofEvents.length; i++) {
       if (proofEvents[i] != other.proofEvents[i]) return false;
     }
+    if (cartItems.length != other.cartItems.length) return false;
+    for (var i = 0; i < cartItems.length; i++) {
+      if (cartItems[i] != other.cartItems[i]) return false;
+    }
     return true;
   }
 
@@ -405,6 +427,7 @@ class LaundryOrder {
           expressFlatSnapshotUgx,
           expressPctSnapshot,
           paymentAmountUgx,
+          Object.hashAll(cartItems),
         ),
       );
 }

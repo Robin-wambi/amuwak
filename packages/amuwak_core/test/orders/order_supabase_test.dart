@@ -139,5 +139,66 @@ void main() {
       expect(order.proofEvents, hasLength(1));
       expect(order.proofEvents.single.id, 'pe-live');
     });
+
+    group('cart_items', () {
+      Map<String, dynamic> row({Object? cartItems}) => {
+            'id': 'o-cart',
+            'order_code': 'AMW-0001',
+            'customer_name': 'Ada',
+            'phone': '0700',
+            'address': 'Kira',
+            'service_type': 'Wash & Iron',
+            'status': 'pending_pickup',
+            'item_count': 3,
+            'intake_method': 'customer_app',
+            if (cartItems != null) 'cart_items': cartItems,
+          };
+
+      test('hydrates the itemized snapshot a customer checked out', () {
+        final order = LaundryOrder.fromSupabase(row(cartItems: [
+          {
+            'kind': 'weight',
+            'name': 'Wash & Iron',
+            'service_type': 'washAndIron',
+            'est_kg': 6,
+            'qty': 1,
+          },
+          {
+            'kind': 'piece',
+            'name': 'Jacket',
+            'unit_ugx': 8000,
+            'qty': 2,
+            'photo_key': 'customer/c1/cart/p1.jpg',
+          },
+        ]), const []);
+
+        expect(order.cartItems, hasLength(2));
+        expect(order.cartItems.first.serviceType, ServiceType.washAndIron);
+        expect(order.flaggedCartItems.single.photoKey,
+            'customer/c1/cart/p1.jpg');
+      });
+
+      test('a row predating migration 0050 degrades to an empty snapshot', () {
+        expect(LaundryOrder.fromSupabase(row(), const []).cartItems, isEmpty);
+      });
+
+      test('a null column degrades rather than erroring the stream', () {
+        expect(
+          LaundryOrder.fromSupabase(row(cartItems: null), const []).cartItems,
+          isEmpty,
+        );
+      });
+
+      test('the snapshot participates in equality', () {
+        const item = CartSnapshotItem(kind: 'piece', name: 'Jacket');
+        final base = LaundryOrder.fromSupabase(row(), const []);
+
+        expect(base.copyWith(cartItems: const [item]), isNot(base));
+        expect(
+          base.copyWith(cartItems: const [item]),
+          base.copyWith(cartItems: const [item]),
+        );
+      });
+    });
   });
 }

@@ -54,8 +54,8 @@ void main() {
     expect(rows.first.orderCode, 'AMW-1');
   });
 
-  test('schemaVersion is 7', () {
-    expect(db.schemaVersion, 7);
+  test('schemaVersion is 8', () {
+    expect(db.schemaVersion, 8);
   });
 
   test('orders table exposes the pricing columns', () async {
@@ -115,6 +115,39 @@ void main() {
         containsAll(<String>['updated_by', 'deleted_by']),
         reason: 'the from < 6 branch should add both audit columns',
       );
+      await migrated.close();
+    } finally {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  test("onUpgrade from v7 adds the customer's cart snapshot", () async {
+    final tempDir = await Directory.systemTemp.createTemp('amuwak_mig_v7');
+    final file = File(p.join(tempDir.path, 'v7.sqlite'));
+    try {
+      // A v7-era database already holding an order, so the upgrade has to
+      // back-fill the new column rather than only create it.
+      final seed = sqlite3.open(file.path);
+      seed.execute(
+        'CREATE TABLE orders (id TEXT NOT NULL PRIMARY KEY, order_code TEXT NOT NULL);',
+      );
+      seed.execute("INSERT INTO orders VALUES ('o-1', 'AMW-1');");
+      seed.execute('PRAGMA user_version = 7;');
+      seed.dispose();
+
+      final migrated = AppDatabase.forTesting(NativeDatabase(file));
+      final cols =
+          await migrated.customSelect("PRAGMA table_info('orders')").get();
+      expect(
+        cols.map((r) => r.read<String>('name')),
+        contains('cart_items'),
+        reason: 'the from < 8 branch should add the snapshot column',
+      );
+
+      // The pre-existing order reads as "no cart", not null.
+      final existing =
+          await migrated.customSelect('SELECT cart_items FROM orders').get();
+      expect(existing.single.read<String>('cart_items'), '[]');
       await migrated.close();
     } finally {
       await tempDir.delete(recursive: true);

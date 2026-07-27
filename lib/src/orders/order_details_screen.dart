@@ -7,6 +7,7 @@ import '../printing/printer_store.dart';
 import '../sync/orders_repository.dart';
 import '../sync/proof_events_repository.dart';
 import 'chat/order_chat_screen.dart';
+import 'customer_photo_url.dart';
 import 'order.dart';
 import 'payment/record_payment_sheet.dart';
 import 'pricing/pricing_section.dart';
@@ -18,6 +19,7 @@ import 'proof/printable_tag.dart';
 import 'proof/proof_photo_storage.dart';
 import 'proof/scanner_screen.dart';
 import 'proof/tag_print_view.dart';
+import 'widgets/customer_items_section.dart';
 
 DateTime _defaultClock() => DateTime.now();
 
@@ -36,6 +38,7 @@ class OrderDetailsScreen extends StatefulWidget {
     this.printerStore,
     this.captureTag = captureTagPng,
     this.catalogItems = const [],
+    this.customerPhotoUrl,
   });
 
   final LaundryOrder order;
@@ -60,6 +63,10 @@ class OrderDetailsScreen extends StatefulWidget {
   /// Active catalog items offered in the "Add item" picker. Empty falls back to
   /// the free-form entry sheet.
   final List<CatalogItem> catalogItems;
+
+  /// Signs URLs for the customer's damage photos. Null renders placeholders, so
+  /// the screen still works offline and in tests.
+  final CustomerPhotoUrlResolver? customerPhotoUrl;
 
   @override
   State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
@@ -219,6 +226,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           actorStaffId: widget.actorStaffId,
           labelPrinter: widget.labelPrinter,
           catalogItems: widget.catalogItems,
+          customerPhotoUrl: widget.customerPhotoUrl,
         ),
       ),
     );
@@ -511,6 +519,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           ),
                         ],
                       ),
+                      // The customer's own itemized list + damage photos, above
+                      // Pricing: staff should see what was declared (and what to
+                      // inspect) before they weigh and price it.
+                      if (_order.cartItems.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        CustomerItemsSection(
+                          items: _order.cartItems,
+                          photoUrl: widget.customerPhotoUrl,
+                        ),
+                      ],
                       if (_order.status != OrderStatus.pendingPickup) ...[
                         const SizedBox(height: AppSpacing.md),
                         _DetailsSection(

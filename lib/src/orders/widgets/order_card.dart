@@ -253,6 +253,19 @@ class OrderCard extends StatelessWidget {
                             style: textTheme.labelSmall
                                 ?.copyWith(color: colorScheme.primary),
                           ),
+                          // Damage the customer photographed. Surfaced in the
+                          // list so staff spot it before opening the order.
+                          if (order.flaggedCartItems.isNotEmpty) ...[
+                            const SizedBox(width: AppSpacing.sm),
+                            Icon(Icons.report_problem_outlined,
+                                size: 12, color: AppColors.pendingFg),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${order.flaggedCartItems.length} flagged',
+                              style: textTheme.labelSmall
+                                  ?.copyWith(color: AppColors.pendingFg),
+                            ),
+                          ],
                         ],
                       ),
                     ],

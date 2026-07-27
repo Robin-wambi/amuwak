@@ -49,6 +49,7 @@ drift.Order _driftOrderRow({int totalUgx = 10000, int paymentAmountUgx = 0}) =>
       expressFlatSnapshotUgx: 0,
       expressPctSnapshot: 0,
       paymentAmountUgx: paymentAmountUgx,
+      cartItems: '[]',
     );
 
 Map<String, dynamic> _supabaseRow({

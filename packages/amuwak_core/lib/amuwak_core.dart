@@ -11,6 +11,10 @@ export 'src/shared/email_validation.dart';
 
 export 'src/orders/order_status.dart';
 export 'src/orders/service_type.dart';
+// The staff-facing view of a customer's itemized cart. A value type (no clash
+// with the customer app's Drift `CartItem` row), so it lives in the wide barrel
+// next to LineItem rather than in models.dart.
+export 'src/orders/cart_snapshot_item.dart';
 
 export 'src/shared/theme/app_colors.dart';
 export 'src/shared/theme/app_radii.dart';

@@ -62,7 +62,21 @@ extension LaundryOrderDriftX on LaundryOrder {
       expressFlatSnapshotUgx: row.expressFlatSnapshotUgx,
       expressPctSnapshot: row.expressPctSnapshot,
       paymentAmountUgx: row.paymentAmountUgx,
+      // The customer's itemized cart, stored as JSON like line_items. Empty for
+      // a rider/in-shop order; tolerant of anything malformed so one bad row
+      // can't error the whole orders stream.
+      cartItems: parseCartSnapshot(_tryDecode(row.cartItems)),
     );
+  }
+}
+
+/// Decodes a JSON column, degrading a corrupt value to null (which reads as an
+/// empty snapshot) rather than throwing inside the orders stream.
+Object? _tryDecode(String raw) {
+  try {
+    return jsonDecode(raw);
+  } on FormatException {
+    return null;
   }
 }
 
