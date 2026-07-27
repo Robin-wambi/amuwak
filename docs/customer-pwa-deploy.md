@@ -1,0 +1,60 @@
+# Customer PWA — deployment
+
+The customer app (`apps/amuwak_customer`) ships as a PWA to **Cloudflare Pages**,
+built and published by `.github/workflows/deploy-customer-pwa.yml` on every push
+to `main` that touches the app, `amuwak_core`, or the workspace pubspec.
+
+## Why not GitHub Pages
+
+GitHub Pages serves **one site per repository**, and the staff PWA already owns
+it (`robin-wambi.github.io/amuwak_staff/`, see `deploy-pwa.yml`). A second
+`deploy-pages` job would not co-exist — each run would replace the other app.
+Cloudflare Pages also avoids putting `amuwak_staff` inside a customer-facing URL
+and gives a straightforward path to a real domain later.
+
+## One-time setup
+
+1. **Create the Pages project.** In the Cloudflare dashboard → Workers & Pages →
+   Create → Pages → *Direct Upload*, name it exactly **`amuwak-customer`** (the
+   workflow passes `--project-name=amuwak-customer`). Direct Upload is correct:
+   the bundle is built by GitHub Actions, not by Cloudflare.
+2. **Create an API token.** My Profile → API Tokens → Create Token → use the
+   *Edit Cloudflare Workers* template, or a custom token with
+   **Account → Cloudflare Pages → Edit**. Scope it to the one account.
+3. **Add two GitHub repository secrets** (Settings → Secrets and variables →
+   Actions):
+   - `CLOUDFLARE_API_TOKEN` — the token from step 2.
+   - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare dashboard → Workers & Pages → the
+     account ID shown in the right-hand sidebar.
+
+   `SUPABASE_URL` and `SUPABASE_ANON_KEY` already exist for the staff PWA and are
+   reused as-is — both apps talk to the same project.
+4. **Run it.** Actions → *Deploy customer PWA to Cloudflare Pages* → Run
+   workflow. The published URL appears in the job log and in the Cloudflare
+   dashboard (`https://amuwak-customer.pages.dev` until a custom domain is
+   attached).
+
+## Notes
+
+- **Base href.** Cloudflare serves the app from the domain root, so no
+  `--base-href` is passed. The staff app needs one only because it lives on a
+  Pages sub-path.
+- **Offline assets.** The workflow fails the build if `sqlite3.wasm`,
+  `drift_worker.js`, or `flutter_service_worker.js` is missing from
+  `build/web`. Drift's web backend loads the first two at runtime and the
+  service worker is what makes the app shell load with no network — a gap there
+  would only surface when a customer opens the app offline, far too late.
+- **Empty secrets fail loudly.** A build with a blank `SUPABASE_URL` compiles
+  fine and then dies at runtime with an unconfigured client, so the workflow
+  checks for empties and stops.
+- **Custom domain.** Cloudflare dashboard → the Pages project → Custom domains.
+  Nothing in the build needs to change: the app is already root-relative.
+
+## Sanity checks after the first deploy
+
+- Install the app from the browser ("Add to Home screen"): the name should read
+  **Amuwak** with the brand icon, not `amuwak_customer` with the Flutter logo.
+- Sign in, then turn the network off and reload — the shell should still open
+  (service worker) and the sync banner should show the offline notice.
+- Build a cart offline, attach a damage photo, and check out; restore the network
+  and confirm the order and its photo drain from the outbox.

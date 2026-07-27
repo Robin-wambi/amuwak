@@ -41,11 +41,12 @@ live environment are done; the rest need a real Supabase project + devices.
       read path for a customer's own orders — either extend the bucket SELECT
       policy (see `0008_storage.sql`) to own-order photos, or mint signed URLs
       via a `SECURITY DEFINER` RPC — then render them on `OrderDetailScreen`.
-- [ ] **Customer PWA deploy workflow.** If a customer web build is wanted, add a
-      `deploy-pwa` workflow variant for `apps/amuwak_customer` (its own
-      base-href + `--dart-define` secrets), mirroring the staff PWA deploy.
-- [ ] **`/account` screen.** Currently a stub route; a profile/sign-out screen
-      is a small follow-up.
+- [x] **Customer PWA deploy workflow.** Done — ships to Cloudflare Pages via
+      `.github/workflows/deploy-customer-pwa.yml` (GitHub Pages serves one site
+      per repo and the staff PWA owns it). One-time Cloudflare setup and the
+      post-deploy sanity checks are in `docs/customer-pwa-deploy.md`.
+- [x] **`/account` screen.** Done — `account/profile_screen.dart` (name, phone,
+      email, sign out) replaced the stub route.
 
 ## CI
 
