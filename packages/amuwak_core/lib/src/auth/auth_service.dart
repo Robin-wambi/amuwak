@@ -29,6 +29,36 @@ class AuthService {
     }
   }
 
+  /// Register a new user with email + password (the customer app's self-signup).
+  /// Email is trimmed and lower-cased to match [signInWithEmailPassword]. With
+  /// email confirmation disabled (customer-app v1), this establishes a session
+  /// immediately, so the caller can link the customers row on the same run.
+  Future<void> signUpWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _goTrue.signUp(
+        email: _normalizeEmail(email),
+        password: password,
+      );
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    }
+  }
+
+  /// Forces a JWT refresh so a just-issued custom claim (e.g. the `customer`
+  /// role minted by the access-token hook after [signUpWithEmailPassword] +
+  /// linking) is present on the access token without waiting for the next
+  /// scheduled refresh.
+  Future<void> refreshSession() async {
+    try {
+      await _goTrue.refreshSession();
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    }
+  }
+
   /// Set the signed-in user's password. Used both when accepting an invite
   /// (the invite link establishes a session, then the user picks a password)
   /// and when completing a password reset.

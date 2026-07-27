@@ -237,6 +237,38 @@ class OrderCard extends StatelessWidget {
                       order.customerName,
                       style: textTheme.titleMedium,
                     ),
+                    // Attribution for a self-service order the customer placed
+                    // from the customer app (intake_method='customer_app'), so
+                    // staff know it wasn't taken by a rider/in-shop.
+                    if (order.intakeMethod == 'customer_app') ...[
+                      const SizedBox(height: AppSpacing.xs / 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.smartphone,
+                              size: 12, color: colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Placed via app',
+                            style: textTheme.labelSmall
+                                ?.copyWith(color: colorScheme.primary),
+                          ),
+                          // Damage the customer photographed. Surfaced in the
+                          // list so staff spot it before opening the order.
+                          if (order.flaggedCartItems.isNotEmpty) ...[
+                            const SizedBox(width: AppSpacing.sm),
+                            Icon(Icons.report_problem_outlined,
+                                size: 12, color: AppColors.pendingFg),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${order.flaggedCartItems.length} flagged',
+                              style: textTheme.labelSmall
+                                  ?.copyWith(color: AppColors.pendingFg),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.xs / 2),
                     Text(
                       // Offline orders have no server-minted AMW code yet, so

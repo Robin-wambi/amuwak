@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:drift/drift.dart';
@@ -271,6 +272,34 @@ class SyncPuller {
         createdAt: Value(_dt(r['created_at'])),
         updatedAt: Value(_dt(r['updated_at'])),
         deletedAt: Value(_dtNullable(r['deleted_at'])),
+        // Pricing + payment. These MUST be carried: this mapper is the only
+        // server→local path for orders (staff screens read Drift, never
+        // Supabase), so anything omitted here reads as 0 on the device. That
+        // bites every customer-app order, whose price is frozen server-side at
+        // checkout and never re-derived locally. Degrade-to-0 on a null or a
+        // row predating a column, matching `LaundryOrder.fromSupabase`.
+        ratePerKgSnapshotUgx:
+            Value((r['rate_per_kg_snapshot_ugx'] as num?)?.toDouble() ?? 0),
+        estimatedWeightKg: Value((r['estimated_weight_kg'] as num?)?.toDouble()),
+        finalWeightKg: Value((r['final_weight_kg'] as num?)?.toDouble()),
+        lineItems: Value(jsonEncode(r['line_items'] ?? const [])),
+        manualAdjustmentUgx:
+            Value((r['manual_adjustment_ugx'] as num?)?.toInt() ?? 0),
+        totalUgx: Value((r['total_ugx'] as num?)?.toInt() ?? 0),
+        deliveryFeeSnapshotUgx:
+            Value((r['delivery_fee_snapshot_ugx'] as num?)?.toInt() ?? 0),
+        isExpress: Value((r['is_express'] as bool?) ?? false),
+        expressFlatSnapshotUgx:
+            Value((r['express_flat_snapshot_ugx'] as num?)?.toInt() ?? 0),
+        expressPctSnapshot:
+            Value((r['express_pct_snapshot'] as num?)?.toDouble() ?? 0),
+        paymentAmountUgx:
+            Value((r['payment_amount_ugx'] as num?)?.toInt() ?? 0),
+        // The customer's itemized cart (jsonb → the JSON text column). Kept so
+        // staff can see what a customer-app order contains, and which garments
+        // they flagged, without a network round-trip. Absent/null for rider and
+        // in-shop orders.
+        cartItems: Value(jsonEncode(r['cart_items'] ?? const [])),
       );
 
   ProofEventsCompanion _proofEventsFromJson(Map<String, dynamic> r) =>

@@ -12,6 +12,7 @@ import '../notifications/notification_summary.dart';
 import '../notifications/notifications_screen.dart';
 import '../expenses/expense.dart';
 import '../expenses/expense_entry_screen.dart';
+import '../orders/customer_photo_url.dart';
 import '../orders/geo_services.dart';
 import '../orders/new_pickup_result.dart';
 import '../orders/new_pickup_screen.dart';
@@ -294,6 +295,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
           labelPrinter: ref.read(labelPrinterProvider),
           printerStore: ref.read(printerStoreProvider),
           catalogItems: catalogItems,
+          customerPhotoUrl: ref.read(customerPhotoUrlResolverProvider),
         ),
       ),
     );
@@ -331,6 +333,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
           labelPrinter: ref.read(labelPrinterProvider),
           printerStore: ref.read(printerStoreProvider),
           catalogItems: catalogItems,
+          customerPhotoUrl: ref.read(customerPhotoUrlResolverProvider),
         ),
       ),
     );

@@ -49,6 +49,7 @@ drift.Order _driftOrderRow({int totalUgx = 10000, int paymentAmountUgx = 0}) =>
       expressFlatSnapshotUgx: 0,
       expressPctSnapshot: 0,
       paymentAmountUgx: paymentAmountUgx,
+      cartItems: '[]',
     );
 
 Map<String, dynamic> _supabaseRow({
@@ -105,9 +106,9 @@ void main() {
     });
   });
 
-  group('LaundryOrder.fromDriftRow', () {
+  group('LaundryOrderDriftX.fromDriftRow', () {
     test('reads payment_amount_ugx from the row', () {
-      final mapped = LaundryOrder.fromDriftRow(
+      final mapped = LaundryOrderDriftX.fromDriftRow(
         _driftOrderRow(paymentAmountUgx: 7000),
         const [],
       );

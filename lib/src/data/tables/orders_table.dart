@@ -42,6 +42,12 @@ class Orders extends Table {
   // Outstanding = total_ugx - this; paid/partial/unpaid is derived, not stored.
   IntColumn      get paymentAmountUgx       => integer().named('payment_amount_ugx').withDefault(const Constant(0))();
 
+  // The customer's itemized cart, frozen at checkout (Supabase migration 0050),
+  // as a JSON array — same storage shape as line_items. Empty for orders a rider
+  // or the shop took. Read-only here: pulled from Supabase and rendered for
+  // staff, never written back.
+  TextColumn     get cartItems              => text().named('cart_items').withDefault(const Constant('[]'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

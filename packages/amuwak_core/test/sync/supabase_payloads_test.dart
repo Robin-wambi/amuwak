@@ -1,14 +1,14 @@
-import 'package:amuwak_staff/src/data/app_database.dart' show Customer;
-import 'package:amuwak_staff/src/orders/order.dart';
 import 'package:amuwak_core/amuwak_core.dart';
-import 'package:amuwak_staff/src/orders/proof_event.dart';
-import 'package:amuwak_staff/src/sync/supabase_payloads.dart';
+import 'package:amuwak_core/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The online write path sends these snake_case row maps to Supabase. These
 /// pure builders are the counterparts to the read mappers; testing them pins
 /// the column names, enum→string folding, and UTC ISO timestamps without
 /// mocking the Supabase client.
+///
+/// The Drift-`Customer`-based `customerUpsertPayload` stays in the staff app;
+/// its test stays with it (`test/sync/customer_upsert_payload_test.dart`).
 void main() {
   group('orderUpsertPayload', () {
     test('maps every column, folds enums, and stamps UTC ISO timestamps', () {
@@ -64,7 +64,8 @@ void main() {
         notes: '',
         scheduledFor: DateTime.utc(2026, 6, 3, 9),
       );
-      final p = orderUpsertPayload(order, actorStaffId: 's1', now: DateTime(2026, 6, 2));
+      final p =
+          orderUpsertPayload(order, actorStaffId: 's1', now: DateTime(2026, 6, 2));
       expect(p['scheduled_for'], DateTime.utc(2026, 6, 3, 9).toIso8601String());
     });
   });
@@ -178,48 +179,6 @@ void main() {
       expect(p['deleted_at'], now.toUtc().toIso8601String());
       expect(p['deleted_by'], 's1');
       expect(p['updated_at'], now.toUtc().toIso8601String());
-    });
-  });
-
-  group('customerUpsertPayload', () {
-    test('maps columns and keeps createdAt while refreshing updatedAt', () {
-      final customer = Customer(
-        id: 'c1',
-        name: 'Ada',
-        phone: '0700',
-        address: '12 Kira Rd',
-        notes: 'gate code 4',
-        createdAt: DateTime.utc(2026, 6, 1, 8),
-        updatedAt: DateTime.utc(2026, 6, 1, 8),
-        deletedAt: null,
-      );
-      final now = DateTime(2026, 6, 2, 9);
-
-      final p = customerUpsertPayload(customer, now: now);
-
-      expect(p['id'], 'c1');
-      expect(p['name'], 'Ada');
-      expect(p['phone'], '0700');
-      expect(p['address'], '12 Kira Rd');
-      expect(p['notes'], 'gate code 4');
-      expect(p['created_at'], DateTime.utc(2026, 6, 1, 8).toIso8601String());
-      expect(p['updated_at'], now.toUtc().toIso8601String());
-    });
-
-    test('passes through null address/notes', () {
-      final customer = Customer(
-        id: 'c2',
-        name: 'Bob',
-        phone: '0701',
-        address: null,
-        notes: null,
-        createdAt: DateTime.utc(2026, 6, 1, 8),
-        updatedAt: DateTime.utc(2026, 6, 1, 8),
-        deletedAt: null,
-      );
-      final p = customerUpsertPayload(customer, now: DateTime(2026, 6, 2));
-      expect(p['address'], isNull);
-      expect(p['notes'], isNull);
     });
   });
 
