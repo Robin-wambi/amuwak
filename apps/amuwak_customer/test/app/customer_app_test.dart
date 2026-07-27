@@ -1,5 +1,6 @@
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_customer/src/app/customer_app.dart';
+import 'package:amuwak_customer/src/cart/cart_photo.dart';
 import 'package:amuwak_customer/src/cart/checkout_service.dart';
 import 'package:amuwak_customer/src/sync/sync_providers.dart';
 import 'package:flutter/widgets.dart';
@@ -21,6 +22,7 @@ void main() {
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
           outboxDriverProvider.overrideWith((ref) {}),
           placeOrderHandlerProvider.overrideWith((ref) {}),
+          photoUploadHandlerProvider.overrideWith((ref) {}),
         ],
         child: const CustomerApp(),
       );

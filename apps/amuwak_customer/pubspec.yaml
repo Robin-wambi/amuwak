@@ -34,6 +34,12 @@ dependencies:
   path: ^1.9.0
   connectivity_plus: ^6.0.0
 
+  # Damage photos on a cart line. Same capture + compress params as the staff
+  # proof photos (1280px longest edge, JPEG 80); the compressed bytes are held
+  # in the local DB (not a file) so the path works on web too.
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -41,6 +47,8 @@ dev_dependencies:
   mocktail: ^1.0.4
   drift_dev: ^2.18.0
   build_runner: ^2.4.0
+  # Builds a v1-schema file so the schema migration can be tested for real.
+  sqlite3: ^2.4.0
 
 flutter:
   uses-material-design: true

@@ -97,17 +97,6 @@ class $CartItemsTable extends CartItems
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _photoLocalPathMeta = const VerificationMeta(
-    'photoLocalPath',
-  );
-  @override
-  late final GeneratedColumn<String> photoLocalPath = GeneratedColumn<String>(
-    'photo_local_path',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _photoKeyMeta = const VerificationMeta(
     'photoKey',
   );
@@ -142,7 +131,6 @@ class $CartItemsTable extends CartItems
     unitUgx,
     qty,
     note,
-    photoLocalPath,
     photoKey,
     position,
   ];
@@ -221,15 +209,6 @@ class $CartItemsTable extends CartItems
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
       );
     }
-    if (data.containsKey('photo_local_path')) {
-      context.handle(
-        _photoLocalPathMeta,
-        photoLocalPath.isAcceptableOrUnknown(
-          data['photo_local_path']!,
-          _photoLocalPathMeta,
-        ),
-      );
-    }
     if (data.containsKey('photo_key')) {
       context.handle(
         _photoKeyMeta,
@@ -287,10 +266,6 @@ class $CartItemsTable extends CartItems
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
-      photoLocalPath: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}photo_local_path'],
-      ),
       photoKey: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}photo_key'],
@@ -318,7 +293,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
   final int? unitUgx;
   final int qty;
   final String? note;
-  final String? photoLocalPath;
   final String? photoKey;
   final int position;
   const CartItem({
@@ -331,7 +305,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
     this.unitUgx,
     required this.qty,
     this.note,
-    this.photoLocalPath,
     this.photoKey,
     required this.position,
   });
@@ -356,9 +329,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
     map['qty'] = Variable<int>(qty);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
-    }
-    if (!nullToAbsent || photoLocalPath != null) {
-      map['photo_local_path'] = Variable<String>(photoLocalPath);
     }
     if (!nullToAbsent || photoKey != null) {
       map['photo_key'] = Variable<String>(photoKey);
@@ -386,9 +356,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
           : Value(unitUgx),
       qty: Value(qty),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
-      photoLocalPath: photoLocalPath == null && nullToAbsent
-          ? const Value.absent()
-          : Value(photoLocalPath),
       photoKey: photoKey == null && nullToAbsent
           ? const Value.absent()
           : Value(photoKey),
@@ -411,7 +378,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
       unitUgx: serializer.fromJson<int?>(json['unitUgx']),
       qty: serializer.fromJson<int>(json['qty']),
       note: serializer.fromJson<String?>(json['note']),
-      photoLocalPath: serializer.fromJson<String?>(json['photoLocalPath']),
       photoKey: serializer.fromJson<String?>(json['photoKey']),
       position: serializer.fromJson<int>(json['position']),
     );
@@ -429,7 +395,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
       'unitUgx': serializer.toJson<int?>(unitUgx),
       'qty': serializer.toJson<int>(qty),
       'note': serializer.toJson<String?>(note),
-      'photoLocalPath': serializer.toJson<String?>(photoLocalPath),
       'photoKey': serializer.toJson<String?>(photoKey),
       'position': serializer.toJson<int>(position),
     };
@@ -445,7 +410,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
     Value<int?> unitUgx = const Value.absent(),
     int? qty,
     Value<String?> note = const Value.absent(),
-    Value<String?> photoLocalPath = const Value.absent(),
     Value<String?> photoKey = const Value.absent(),
     int? position,
   }) => CartItem(
@@ -460,9 +424,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
     unitUgx: unitUgx.present ? unitUgx.value : this.unitUgx,
     qty: qty ?? this.qty,
     note: note.present ? note.value : this.note,
-    photoLocalPath: photoLocalPath.present
-        ? photoLocalPath.value
-        : this.photoLocalPath,
     photoKey: photoKey.present ? photoKey.value : this.photoKey,
     position: position ?? this.position,
   );
@@ -481,9 +442,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
       unitUgx: data.unitUgx.present ? data.unitUgx.value : this.unitUgx,
       qty: data.qty.present ? data.qty.value : this.qty,
       note: data.note.present ? data.note.value : this.note,
-      photoLocalPath: data.photoLocalPath.present
-          ? data.photoLocalPath.value
-          : this.photoLocalPath,
       photoKey: data.photoKey.present ? data.photoKey.value : this.photoKey,
       position: data.position.present ? data.position.value : this.position,
     );
@@ -501,7 +459,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
           ..write('unitUgx: $unitUgx, ')
           ..write('qty: $qty, ')
           ..write('note: $note, ')
-          ..write('photoLocalPath: $photoLocalPath, ')
           ..write('photoKey: $photoKey, ')
           ..write('position: $position')
           ..write(')'))
@@ -519,7 +476,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
     unitUgx,
     qty,
     note,
-    photoLocalPath,
     photoKey,
     position,
   );
@@ -536,7 +492,6 @@ class CartItem extends DataClass implements Insertable<CartItem> {
           other.unitUgx == this.unitUgx &&
           other.qty == this.qty &&
           other.note == this.note &&
-          other.photoLocalPath == this.photoLocalPath &&
           other.photoKey == this.photoKey &&
           other.position == this.position);
 }
@@ -551,7 +506,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
   final Value<int?> unitUgx;
   final Value<int> qty;
   final Value<String?> note;
-  final Value<String?> photoLocalPath;
   final Value<String?> photoKey;
   final Value<int> position;
   final Value<int> rowid;
@@ -565,7 +519,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     this.unitUgx = const Value.absent(),
     this.qty = const Value.absent(),
     this.note = const Value.absent(),
-    this.photoLocalPath = const Value.absent(),
     this.photoKey = const Value.absent(),
     this.position = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -580,7 +533,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     this.unitUgx = const Value.absent(),
     this.qty = const Value.absent(),
     this.note = const Value.absent(),
-    this.photoLocalPath = const Value.absent(),
     this.photoKey = const Value.absent(),
     this.position = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -597,7 +549,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     Expression<int>? unitUgx,
     Expression<int>? qty,
     Expression<String>? note,
-    Expression<String>? photoLocalPath,
     Expression<String>? photoKey,
     Expression<int>? position,
     Expression<int>? rowid,
@@ -612,7 +563,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
       if (unitUgx != null) 'unit_ugx': unitUgx,
       if (qty != null) 'qty': qty,
       if (note != null) 'note': note,
-      if (photoLocalPath != null) 'photo_local_path': photoLocalPath,
       if (photoKey != null) 'photo_key': photoKey,
       if (position != null) 'position': position,
       if (rowid != null) 'rowid': rowid,
@@ -629,7 +579,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     Value<int?>? unitUgx,
     Value<int>? qty,
     Value<String?>? note,
-    Value<String?>? photoLocalPath,
     Value<String?>? photoKey,
     Value<int>? position,
     Value<int>? rowid,
@@ -644,7 +593,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
       unitUgx: unitUgx ?? this.unitUgx,
       qty: qty ?? this.qty,
       note: note ?? this.note,
-      photoLocalPath: photoLocalPath ?? this.photoLocalPath,
       photoKey: photoKey ?? this.photoKey,
       position: position ?? this.position,
       rowid: rowid ?? this.rowid,
@@ -681,9 +629,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
-    if (photoLocalPath.present) {
-      map['photo_local_path'] = Variable<String>(photoLocalPath.value);
-    }
     if (photoKey.present) {
       map['photo_key'] = Variable<String>(photoKey.value);
     }
@@ -708,7 +653,6 @@ class CartItemsCompanion extends UpdateCompanion<CartItem> {
           ..write('unitUgx: $unitUgx, ')
           ..write('qty: $qty, ')
           ..write('note: $note, ')
-          ..write('photoLocalPath: $photoLocalPath, ')
           ..write('photoKey: $photoKey, ')
           ..write('position: $position, ')
           ..write('rowid: $rowid')
@@ -1186,16 +1130,334 @@ class OutboxCompanion extends UpdateCompanion<OutboxData> {
   }
 }
 
+class $LocalPhotosTable extends LocalPhotos
+    with TableInfo<$LocalPhotosTable, LocalPhoto> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalPhotosTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bytesMeta = const VerificationMeta('bytes');
+  @override
+  late final GeneratedColumn<Uint8List> bytes = GeneratedColumn<Uint8List>(
+    'bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _uploadedMeta = const VerificationMeta(
+    'uploaded',
+  );
+  @override
+  late final GeneratedColumn<bool> uploaded = GeneratedColumn<bool>(
+    'uploaded',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("uploaded" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, bytes, uploaded, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_photos';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalPhoto> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('bytes')) {
+      context.handle(
+        _bytesMeta,
+        bytes.isAcceptableOrUnknown(data['bytes']!, _bytesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bytesMeta);
+    }
+    if (data.containsKey('uploaded')) {
+      context.handle(
+        _uploadedMeta,
+        uploaded.isAcceptableOrUnknown(data['uploaded']!, _uploadedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  LocalPhoto map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalPhoto(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      bytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}bytes'],
+      )!,
+      uploaded: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}uploaded'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalPhotosTable createAlias(String alias) {
+    return $LocalPhotosTable(attachedDatabase, alias);
+  }
+}
+
+class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
+  final String key;
+  final Uint8List bytes;
+  final bool uploaded;
+  final DateTime createdAt;
+  const LocalPhoto({
+    required this.key,
+    required this.bytes,
+    required this.uploaded,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['bytes'] = Variable<Uint8List>(bytes);
+    map['uploaded'] = Variable<bool>(uploaded);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  LocalPhotosCompanion toCompanion(bool nullToAbsent) {
+    return LocalPhotosCompanion(
+      key: Value(key),
+      bytes: Value(bytes),
+      uploaded: Value(uploaded),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory LocalPhoto.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalPhoto(
+      key: serializer.fromJson<String>(json['key']),
+      bytes: serializer.fromJson<Uint8List>(json['bytes']),
+      uploaded: serializer.fromJson<bool>(json['uploaded']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'bytes': serializer.toJson<Uint8List>(bytes),
+      'uploaded': serializer.toJson<bool>(uploaded),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  LocalPhoto copyWith({
+    String? key,
+    Uint8List? bytes,
+    bool? uploaded,
+    DateTime? createdAt,
+  }) => LocalPhoto(
+    key: key ?? this.key,
+    bytes: bytes ?? this.bytes,
+    uploaded: uploaded ?? this.uploaded,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  LocalPhoto copyWithCompanion(LocalPhotosCompanion data) {
+    return LocalPhoto(
+      key: data.key.present ? data.key.value : this.key,
+      bytes: data.bytes.present ? data.bytes.value : this.bytes,
+      uploaded: data.uploaded.present ? data.uploaded.value : this.uploaded,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalPhoto(')
+          ..write('key: $key, ')
+          ..write('bytes: $bytes, ')
+          ..write('uploaded: $uploaded, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(key, $driftBlobEquality.hash(bytes), uploaded, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalPhoto &&
+          other.key == this.key &&
+          $driftBlobEquality.equals(other.bytes, this.bytes) &&
+          other.uploaded == this.uploaded &&
+          other.createdAt == this.createdAt);
+}
+
+class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
+  final Value<String> key;
+  final Value<Uint8List> bytes;
+  final Value<bool> uploaded;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const LocalPhotosCompanion({
+    this.key = const Value.absent(),
+    this.bytes = const Value.absent(),
+    this.uploaded = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalPhotosCompanion.insert({
+    required String key,
+    required Uint8List bytes,
+    this.uploaded = const Value.absent(),
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       bytes = Value(bytes),
+       createdAt = Value(createdAt);
+  static Insertable<LocalPhoto> custom({
+    Expression<String>? key,
+    Expression<Uint8List>? bytes,
+    Expression<bool>? uploaded,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (bytes != null) 'bytes': bytes,
+      if (uploaded != null) 'uploaded': uploaded,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalPhotosCompanion copyWith({
+    Value<String>? key,
+    Value<Uint8List>? bytes,
+    Value<bool>? uploaded,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return LocalPhotosCompanion(
+      key: key ?? this.key,
+      bytes: bytes ?? this.bytes,
+      uploaded: uploaded ?? this.uploaded,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (bytes.present) {
+      map['bytes'] = Variable<Uint8List>(bytes.value);
+    }
+    if (uploaded.present) {
+      map['uploaded'] = Variable<bool>(uploaded.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalPhotosCompanion(')
+          ..write('key: $key, ')
+          ..write('bytes: $bytes, ')
+          ..write('uploaded: $uploaded, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$CustomerDatabase extends GeneratedDatabase {
   _$CustomerDatabase(QueryExecutor e) : super(e);
   $CustomerDatabaseManager get managers => $CustomerDatabaseManager(this);
   late final $CartItemsTable cartItems = $CartItemsTable(this);
   late final $OutboxTable outbox = $OutboxTable(this);
+  late final $LocalPhotosTable localPhotos = $LocalPhotosTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [cartItems, outbox];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    cartItems,
+    outbox,
+    localPhotos,
+  ];
 }
 
 typedef $$CartItemsTableCreateCompanionBuilder =
@@ -1209,7 +1471,6 @@ typedef $$CartItemsTableCreateCompanionBuilder =
       Value<int?> unitUgx,
       Value<int> qty,
       Value<String?> note,
-      Value<String?> photoLocalPath,
       Value<String?> photoKey,
       Value<int> position,
       Value<int> rowid,
@@ -1225,7 +1486,6 @@ typedef $$CartItemsTableUpdateCompanionBuilder =
       Value<int?> unitUgx,
       Value<int> qty,
       Value<String?> note,
-      Value<String?> photoLocalPath,
       Value<String?> photoKey,
       Value<int> position,
       Value<int> rowid,
@@ -1282,11 +1542,6 @@ class $$CartItemsTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
     column: $table.note,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get photoLocalPath => $composableBuilder(
-    column: $table.photoLocalPath,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1355,11 +1610,6 @@ class $$CartItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get photoLocalPath => $composableBuilder(
-    column: $table.photoLocalPath,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get photoKey => $composableBuilder(
     column: $table.photoKey,
     builder: (column) => ColumnOrderings(column),
@@ -1411,11 +1661,6 @@ class $$CartItemsTableAnnotationComposer
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
 
-  GeneratedColumn<String> get photoLocalPath => $composableBuilder(
-    column: $table.photoLocalPath,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<String> get photoKey =>
       $composableBuilder(column: $table.photoKey, builder: (column) => column);
 
@@ -1463,7 +1708,6 @@ class $$CartItemsTableTableManager
                 Value<int?> unitUgx = const Value.absent(),
                 Value<int> qty = const Value.absent(),
                 Value<String?> note = const Value.absent(),
-                Value<String?> photoLocalPath = const Value.absent(),
                 Value<String?> photoKey = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -1477,7 +1721,6 @@ class $$CartItemsTableTableManager
                 unitUgx: unitUgx,
                 qty: qty,
                 note: note,
-                photoLocalPath: photoLocalPath,
                 photoKey: photoKey,
                 position: position,
                 rowid: rowid,
@@ -1493,7 +1736,6 @@ class $$CartItemsTableTableManager
                 Value<int?> unitUgx = const Value.absent(),
                 Value<int> qty = const Value.absent(),
                 Value<String?> note = const Value.absent(),
-                Value<String?> photoLocalPath = const Value.absent(),
                 Value<String?> photoKey = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -1507,7 +1749,6 @@ class $$CartItemsTableTableManager
                 unitUgx: unitUgx,
                 qty: qty,
                 note: note,
-                photoLocalPath: photoLocalPath,
                 photoKey: photoKey,
                 position: position,
                 rowid: rowid,
@@ -1774,6 +2015,187 @@ typedef $$OutboxTableProcessedTableManager =
       OutboxData,
       PrefetchHooks Function()
     >;
+typedef $$LocalPhotosTableCreateCompanionBuilder =
+    LocalPhotosCompanion Function({
+      required String key,
+      required Uint8List bytes,
+      Value<bool> uploaded,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$LocalPhotosTableUpdateCompanionBuilder =
+    LocalPhotosCompanion Function({
+      Value<String> key,
+      Value<Uint8List> bytes,
+      Value<bool> uploaded,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$LocalPhotosTableFilterComposer
+    extends Composer<_$CustomerDatabase, $LocalPhotosTable> {
+  $$LocalPhotosTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get bytes => $composableBuilder(
+    column: $table.bytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get uploaded => $composableBuilder(
+    column: $table.uploaded,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalPhotosTableOrderingComposer
+    extends Composer<_$CustomerDatabase, $LocalPhotosTable> {
+  $$LocalPhotosTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get bytes => $composableBuilder(
+    column: $table.bytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get uploaded => $composableBuilder(
+    column: $table.uploaded,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalPhotosTableAnnotationComposer
+    extends Composer<_$CustomerDatabase, $LocalPhotosTable> {
+  $$LocalPhotosTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get bytes =>
+      $composableBuilder(column: $table.bytes, builder: (column) => column);
+
+  GeneratedColumn<bool> get uploaded =>
+      $composableBuilder(column: $table.uploaded, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$LocalPhotosTableTableManager
+    extends
+        RootTableManager<
+          _$CustomerDatabase,
+          $LocalPhotosTable,
+          LocalPhoto,
+          $$LocalPhotosTableFilterComposer,
+          $$LocalPhotosTableOrderingComposer,
+          $$LocalPhotosTableAnnotationComposer,
+          $$LocalPhotosTableCreateCompanionBuilder,
+          $$LocalPhotosTableUpdateCompanionBuilder,
+          (
+            LocalPhoto,
+            BaseReferences<_$CustomerDatabase, $LocalPhotosTable, LocalPhoto>,
+          ),
+          LocalPhoto,
+          PrefetchHooks Function()
+        > {
+  $$LocalPhotosTableTableManager(_$CustomerDatabase db, $LocalPhotosTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalPhotosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalPhotosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalPhotosTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<Uint8List> bytes = const Value.absent(),
+                Value<bool> uploaded = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalPhotosCompanion(
+                key: key,
+                bytes: bytes,
+                uploaded: uploaded,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                required Uint8List bytes,
+                Value<bool> uploaded = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => LocalPhotosCompanion.insert(
+                key: key,
+                bytes: bytes,
+                uploaded: uploaded,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalPhotosTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CustomerDatabase,
+      $LocalPhotosTable,
+      LocalPhoto,
+      $$LocalPhotosTableFilterComposer,
+      $$LocalPhotosTableOrderingComposer,
+      $$LocalPhotosTableAnnotationComposer,
+      $$LocalPhotosTableCreateCompanionBuilder,
+      $$LocalPhotosTableUpdateCompanionBuilder,
+      (
+        LocalPhoto,
+        BaseReferences<_$CustomerDatabase, $LocalPhotosTable, LocalPhoto>,
+      ),
+      LocalPhoto,
+      PrefetchHooks Function()
+    >;
 
 class $CustomerDatabaseManager {
   final _$CustomerDatabase _db;
@@ -1782,4 +2204,6 @@ class $CustomerDatabaseManager {
       $$CartItemsTableTableManager(_db, _db.cartItems);
   $$OutboxTableTableManager get outbox =>
       $$OutboxTableTableManager(_db, _db.outbox);
+  $$LocalPhotosTableTableManager get localPhotos =>
+      $$LocalPhotosTableTableManager(_db, _db.localPhotos);
 }

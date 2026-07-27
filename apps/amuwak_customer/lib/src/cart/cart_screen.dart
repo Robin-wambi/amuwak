@@ -1,12 +1,17 @@
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../auth/customer_session.dart';
 import '../data/customer_database.dart';
 import 'add_item_sheets.dart';
+import 'cart_photo.dart';
 import 'cart_providers.dart';
 import 'checkout_sheet.dart';
+import 'photo_capture.dart';
 
 /// The cart: edit lines, watch the running estimate + free-delivery progress,
 /// and check out. Reads the local Drift cart (works offline).
@@ -76,40 +81,190 @@ class _CartItemTile extends ConsumerWidget {
         : '~${(item.estKg ?? 0).toStringAsFixed(item.estKg == null ? 0 : (item.estKg! % 1 == 0 ? 0 : 1))} kg · weighed at pickup';
 
     return AppCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.name,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 2),
-                Text(subtitle,
-                    style: Theme.of(context).textTheme.bodySmall),
-                if (item.note != null && item.note!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text('Note: ${item.note}',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.name,
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
                         style: Theme.of(context).textTheme.bodySmall),
-                  ),
+                    if (item.note != null && item.note!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('Note: ${item.note}',
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ),
+                  ],
+                ),
+              ),
+              if (isPiece) ...[
+                _QtyStepper(
+                  qty: item.qty,
+                  onChanged: (q) => repo.setQty(item, q),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Text(formatUgx((item.unitUgx ?? 0) * item.qty),
+                    style: Theme.of(context).textTheme.titleMedium),
               ],
+              IconButton(
+                tooltip: 'Remove',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => repo.remove(item.id),
+              ),
+            ],
+          ),
+          _DamagePhotoRow(item: item),
+        ],
+      ),
+    );
+  }
+}
+
+/// Attach / preview / remove a photo of a damaged or stained garment, so staff
+/// are warned before they wash it. Capture is offline-safe: the compressed bytes
+/// live in the local DB and the upload drains from the outbox.
+class _DamagePhotoRow extends ConsumerStatefulWidget {
+  const _DamagePhotoRow({required this.item});
+
+  final CartItem item;
+
+  @override
+  ConsumerState<_DamagePhotoRow> createState() => _DamagePhotoRowState();
+}
+
+class _DamagePhotoRowState extends ConsumerState<_DamagePhotoRow> {
+  bool _busy = false;
+
+  Future<void> _attach(ImageSource source) async {
+    final customerId = ref.read(currentCustomerIdProvider);
+    if (customerId == null) {
+      _snack('Still loading your details — try again in a moment.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final bytes = await ref.read(cartPhotoPickerProvider)(source);
+      // The picker is a full-screen detour — the cart may be gone by now.
+      if (bytes == null || !mounted) return;
+      await ref.read(cartPhotoServiceProvider).attach(
+            item: widget.item,
+            bytes: bytes,
+            customerId: customerId,
+          );
+    } on PlatformException catch (e) {
+      _snack(switch (e.code) {
+        'camera_access_denied' =>
+          'Camera permission denied. Enable it in Settings to take photos.',
+        'photo_access_denied' =>
+          'Photo permission denied. Enable it in Settings to attach a photo.',
+        'no_available_camera' => 'No camera is available on this device.',
+        _ => 'Could not open the camera. Please try again.',
+      });
+    } catch (_) {
+      _snack('Could not attach that photo. Please try again.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _pickSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source != null) await _attach(source);
+  }
+
+  void _preview(Uint8List bytes) => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+          child: InteractiveViewer(child: Image.memory(bytes)),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final key = widget.item.photoKey;
+
+    if (key == null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _busy ? null : _pickSource,
+          icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+          label: const Text('Add damage photo'),
+        ),
+      );
+    }
+
+    final bytes = ref.watch(cartPhotoBytesProvider(key)).valueOrNull;
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: bytes == null ? null : () => _preview(bytes),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppSpacing.sm),
+              child: SizedBox(
+                height: 44,
+                width: 44,
+                child: bytes == null
+                    // Uploaded and swept from the device — the photo is safe on
+                    // the server, there is just nothing local left to show.
+                    ? ColoredBox(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.image_outlined, size: 18),
+                      )
+                    : Image.memory(bytes, fit: BoxFit.cover),
+              ),
             ),
           ),
-          if (isPiece) ...[
-            _QtyStepper(
-              qty: item.qty,
-              onChanged: (q) => repo.setQty(item, q),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(formatUgx((item.unitUgx ?? 0) * item.qty),
-                style: Theme.of(context).textTheme.titleMedium),
-          ],
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text('Damage photo attached',
+                style: theme.textTheme.bodySmall),
+          ),
           IconButton(
-            tooltip: 'Remove',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => repo.remove(item.id),
+            tooltip: 'Remove photo',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: _busy
+                ? null
+                : () => ref.read(cartPhotoServiceProvider).detach(widget.item),
           ),
         ],
       ),

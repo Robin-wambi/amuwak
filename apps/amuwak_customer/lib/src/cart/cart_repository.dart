@@ -58,14 +58,17 @@ class CartRepository {
   Future<void> setNote(CartItem item, String? note) =>
       _db.upsertCartItem(item.toCompanion(true).copyWith(note: Value(note)));
 
-  Future<void> setPhoto(CartItem item,
-          {String? localPath, String? key}) =>
-      _db.upsertCartItem(item.toCompanion(true).copyWith(
-            photoLocalPath: Value(localPath),
-            photoKey: Value(key),
-          ));
-
-  Future<void> remove(String id) => _db.removeCartItem(id);
+  /// Removes a line and any damage photo attached to it. Dropping the local
+  /// bytes also cancels a still-queued upload — nothing will reference the
+  /// object now that the line is gone.
+  Future<void> remove(String id) async {
+    String? photoKey;
+    for (final item in await _db.cartItemsOnce()) {
+      if (item.id == id) photoKey = item.photoKey;
+    }
+    await _db.removeCartItem(id);
+    if (photoKey != null) await _db.deleteLocalPhoto(photoKey);
+  }
 
   Future<void> clear() => _db.clearCart();
 

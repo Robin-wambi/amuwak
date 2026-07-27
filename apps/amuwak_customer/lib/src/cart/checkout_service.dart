@@ -190,6 +190,9 @@ class CartCheckoutController {
       now: _clock(),
     );
     await _db.clearCart();
+    // Photo bytes whose upload already drained are nobody's now the cart is
+    // empty; queued ones are kept so the upload can still find them.
+    await _db.sweepLocalPhotos();
     unawaited(_outbox.drain());
     return draft.orderId;
   }

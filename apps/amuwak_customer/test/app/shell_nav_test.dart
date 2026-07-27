@@ -2,6 +2,7 @@ import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_core/models.dart';
 import 'package:amuwak_customer/src/app/customer_app.dart';
 import 'package:amuwak_customer/src/auth/customer_session.dart';
+import 'package:amuwak_customer/src/cart/cart_photo.dart';
 import 'package:amuwak_customer/src/cart/checkout_service.dart';
 import 'package:amuwak_customer/src/orders/providers.dart';
 import 'package:amuwak_customer/src/pricing/pricing_providers.dart';
@@ -11,14 +12,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Overrides the three providers the shell's SyncBanner reads, so it renders
-/// without opening a real Drift DB (path_provider), hitting connectivity_plus,
-/// or leaving a stream timer pending at teardown.
+/// Overrides the providers the shell's SyncBanner reads, so it renders without
+/// opening a real Drift DB (path_provider), hitting connectivity_plus, reaching
+/// Supabase, or leaving a stream timer pending at teardown.
 List<Override> offlineTestOverrides() => [
       onlineProvider.overrideWith((ref) => Stream.value(true)),
       pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
       outboxDriverProvider.overrideWith((ref) {}),
       placeOrderHandlerProvider.overrideWith((ref) {}),
+      photoUploadHandlerProvider.overrideWith((ref) {}),
     ];
 
 /// Drives the real router/shell with every Supabase-touching provider overridden

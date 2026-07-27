@@ -2,6 +2,7 @@ import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../cart/cart_photo.dart';
 import '../cart/checkout_service.dart';
 import 'sync_providers.dart';
 
@@ -14,9 +15,11 @@ class SyncBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Keep the outbox draining while any screen showing the banner is mounted,
-    // and register the place-order handler so a queued order syncs on launch.
+    // and register the write handlers so an order or damage photo queued in a
+    // previous session syncs on launch.
     ref.watch(outboxDriverProvider);
     ref.watch(placeOrderHandlerProvider);
+    ref.watch(photoUploadHandlerProvider);
 
     final online = ref.watch(onlineProvider).valueOrNull ?? true;
     final pending = ref.watch(pendingSyncCountProvider).valueOrNull ?? 0;
