@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:amuwak_staff/src/data/app_database.dart';
+import 'package:amuwak_staff/src/orders/order.dart';
 import 'package:amuwak_staff/src/sync/pull_dead_letter_repository.dart';
 import 'package:amuwak_staff/src/sync/sync_puller.dart';
 import 'package:amuwak_staff/src/sync/sync_registry.dart';
@@ -700,6 +701,121 @@ void main() {
     test('a rider order (no cart_items at all) stores an empty snapshot',
         () async {
       expect(parseCartSnapshot(jsonDecode(await pull(orderRow()))), isEmpty);
+    });
+  });
+
+  group('pulled pricing and payment', () {
+    // This mapper is the only server→local path for orders, so a column it
+    // drops reads as 0 on the device — and a customer-app order's price is
+    // frozen server-side at checkout, never re-derived locally.
+    Map<String, dynamic> pricedRow({Map<String, dynamic> overrides = const {}}) =>
+        {
+          'id': 'AMW-PRICED',
+          'order_code': 'AMW-PRICED',
+          'customer_name': 'Jane',
+          'phone': '+256',
+          'address': 'addr',
+          // The db stores the service LABEL; ServiceType.fromDbString throws on
+          // anything else, and this row is hydrated through fromDriftRow below.
+          'service_type': 'Wash & Iron',
+          'status': 'in_progress',
+          'intake_method': 'customer_app',
+          'fulfillment_method': 'delivery',
+          'item_count': 3,
+          'intake_recorded_by': 's-1',
+          'created_by': 's-1',
+          'created_at': '2026-07-27T10:00:00Z',
+          'updated_at': '2026-07-27T10:00:00Z',
+          'rate_per_kg_snapshot_ugx': 5000,
+          'estimated_weight_kg': 6.5,
+          'final_weight_kg': 7,
+          'line_items': [
+            {'name': 'Jacket', 'amount_ugx': 8000},
+          ],
+          'manual_adjustment_ugx': -500,
+          'total_ugx': 47500,
+          'delivery_fee_snapshot_ugx': 3000,
+          'is_express': true,
+          'express_flat_snapshot_ugx': 2000,
+          'express_pct_snapshot': 0.15,
+          'payment_amount_ugx': 20000,
+          ...overrides,
+        };
+
+    Future<Order> pullOrder(Map<String, dynamic> row) async {
+      final fake = _FakeFetch();
+      fake.queued['orders'] = [
+        [row]
+      ];
+      await SyncPuller(db: db, fetch: fake.call).pullTable(
+          const SyncTable(name: 'orders', watermarkColumn: 'updated_at'));
+      return (db.select(db.orders)..where((t) => t.id.equals(row['id'] as String)))
+          .getSingle();
+    }
+
+    test('survives the trip to the device instead of reading as zero',
+        () async {
+      final stored = await pullOrder(pricedRow());
+
+      expect(stored.totalUgx, 47500);
+      expect(stored.ratePerKgSnapshotUgx, 5000);
+      expect(stored.estimatedWeightKg, 6.5);
+      expect(stored.finalWeightKg, 7);
+      expect(stored.manualAdjustmentUgx, -500);
+      expect(stored.deliveryFeeSnapshotUgx, 3000);
+      expect(stored.isExpress, isTrue);
+      expect(stored.expressFlatSnapshotUgx, 2000);
+      expect(stored.expressPctSnapshot, 0.15);
+      expect(stored.paymentAmountUgx, 20000);
+      expect(jsonDecode(stored.lineItems), [
+        {'name': 'Jacket', 'amount_ugx': 8000},
+      ]);
+    });
+
+    test('hydrates into a LaundryOrder staff can act on', () async {
+      final order =
+          LaundryOrderDriftX.fromDriftRow(await pullOrder(pricedRow()), const []);
+
+      expect(order.totalUgx, 47500);
+      expect(order.outstandingUgx, 27500, reason: '47500 total less 20000 paid');
+      expect(order.lineItems.single.name, 'Jacket');
+    });
+
+    test('a row predating these columns degrades to 0, not an error', () async {
+      final bare = pricedRow()
+        ..removeWhere((key, _) => const {
+              'rate_per_kg_snapshot_ugx',
+              'estimated_weight_kg',
+              'final_weight_kg',
+              'line_items',
+              'manual_adjustment_ugx',
+              'total_ugx',
+              'delivery_fee_snapshot_ugx',
+              'is_express',
+              'express_flat_snapshot_ugx',
+              'express_pct_snapshot',
+              'payment_amount_ugx',
+            }.contains(key));
+
+      final stored = await pullOrder(bare);
+
+      expect(stored.totalUgx, 0);
+      expect(stored.ratePerKgSnapshotUgx, 0);
+      expect(stored.estimatedWeightKg, isNull);
+      expect(stored.isExpress, isFalse);
+      expect(stored.lineItems, '[]');
+    });
+
+    test('a later pull of the same order overwrites the stale price', () async {
+      await pullOrder(pricedRow());
+      final restated = await pullOrder(pricedRow(overrides: {
+        'total_ugx': 51000,
+        'final_weight_kg': 8,
+        'updated_at': '2026-07-27T11:00:00Z',
+      }));
+
+      expect(restated.totalUgx, 51000, reason: 'insertOrReplace, not ignore');
+      expect(restated.finalWeightKg, 8);
     });
   });
 }
