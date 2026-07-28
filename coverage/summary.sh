@@ -21,18 +21,20 @@
 #                                uncovered lines are live .from()/.stream()/.rpc()
 #                                calls that require integration infra.
 #
-# Usage:  flutter test --coverage && bash coverage/summary.sh [--list]
+# Usage:  (cd apps/amuwak_staff && flutter test --coverage)
+#         bash coverage/summary.sh [--list]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Merge app + amuwak_core coverage. A file like order_code.dart is only partly
-# exercised by app tests but fully by amuwak_core's own suite; the inline awk
-# (below) takes the max hit per line, so concatenating both lcov files merges them. The core paths
-# are package-relative (lib/...), so prefix them to match how the app references
-# them (packages/amuwak_core/lib/...).
+# Merge staff-app + amuwak_core coverage. A file like order_code.dart is only
+# partly exercised by app tests but fully by amuwak_core's own suite; the inline
+# awk (below) takes the max hit per line, so concatenating both lcov files merges
+# them. Each lcov records package-relative paths (lib/...), so both are prefixed
+# with their package directory — that also keeps the EXCLUDE patterns below,
+# which match on path substrings, working unchanged.
 LCOV="$(mktemp)"
 trap 'rm -f "$LCOV"' EXIT
-cat coverage/lcov.info > "$LCOV"
+sed 's#^SF:#SF:apps/amuwak_staff/#' apps/amuwak_staff/coverage/lcov.info > "$LCOV"
 if [ -f packages/amuwak_core/coverage/lcov.info ]; then
   sed 's#^SF:#SF:packages/amuwak_core/#' packages/amuwak_core/coverage/lcov.info >> "$LCOV"
 fi

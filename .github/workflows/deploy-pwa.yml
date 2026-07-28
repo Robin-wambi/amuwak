@@ -25,10 +25,12 @@ jobs:
           channel: stable
           flutter-version: 3.32.0
 
+      # Resolve from the workspace root — one lockfile covers every package.
       - name: Install Dart deps
         run: flutter pub get
 
       - name: Build PWA release bundle
+        working-directory: apps/amuwak_staff
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -38,14 +40,17 @@ jobs:
           # breaks bash line continuation and `--dart-define` parsing.
           url="$(printf %s "$SUPABASE_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
           key="$(printf %s "$SUPABASE_ANON_KEY" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          # Tracks the GitHub Pages project path, which is the REPO name — not
+          # the app's folder. Repo renamed amuwak_staff -> amuwak, so this had to
+          # change with it or every asset 404s under the new URL.
           flutter build web --release \
-            --base-href "/amuwak_staff/" \
+            --base-href "/amuwak/" \
             --dart-define=SUPABASE_URL="$url" \
             --dart-define=SUPABASE_ANON_KEY="$key"
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web
+          path: apps/amuwak_staff/build/web
 
   deploy:
     needs: build
