@@ -1,7 +1,9 @@
 name: amuwak
 
 packages:
-  - .
+  # The repo root is a workspace root, not a package with code, so it is no
+  # longer listed here — the staff app lives in apps/amuwak_staff alongside
+  # the customer app.
   - packages/**
   - apps/**
 

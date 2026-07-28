@@ -25,10 +25,12 @@ jobs:
           channel: stable
           flutter-version: 3.32.0
 
+      # Resolve from the workspace root — one lockfile covers every package.
       - name: Install Dart deps
         run: flutter pub get
 
       - name: Build PWA release bundle
+        working-directory: apps/amuwak_staff
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -45,7 +47,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web
+          path: apps/amuwak_staff/build/web
 
   deploy:
     needs: build

@@ -1,0 +1,116 @@
+name: amuwak_staff
+description: "Amuwak — staff app (rider pickups, in-shop processing, reports)."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+
+# Resolved by the workspace root pubspec (repo root), which pins one shared
+# lockfile across the staff app, the customer app and amuwak_core.
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  amuwak_core:
+    path: ../../packages/amuwak_core
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+
+  # Pickup & delivery proof feature
+  mobile_scanner: ^5.2.3
+  qr_flutter: ^4.1.0
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  path_provider: ^2.1.4
+
+  # Backend + offline sync
+  supabase_flutter: ^2.5.0
+  # Direct dep so we can pass a timeout-wrapping Client to Supabase.initialize
+  # (timeout_http_client.dart). Already resolved transitively via supabase.
+  http: ^1.2.0
+  drift: ^2.18.0
+  drift_flutter: ^0.2.0
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.0
+  path: ^1.9.0
+  connectivity_plus: ^6.0.0
+  flutter_riverpod: ^2.5.0
+  uuid: ^4.5.0
+  geolocator: ^14.0.0
+  geocoding: ^4.0.0
+  print_bluetooth_thermal: ^1.2.1
+  esc_pos_utils_plus: ^2.0.4
+  image: ^4.8.0
+  # Remembers the last-connected label printer (printer_store.dart) and is a
+  # transitive dep of supabase_flutter. Also used in tests via
+  # SharedPreferences.setMockInitialValues.
+  shared_preferences: ^2.5.0
+  permission_handler: ^12.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^5.0.0
+
+  drift_dev: ^2.18.0
+  build_runner: ^2.4.0
+  mocktail: ^1.0.4
+  integration_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  web:
+    generate: true
+    image_path: "assets/branding/app_icon.png"
+    background_color: "#FFF8F2"
+    theme_color: "#A85A1F"
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # Brand typeface. Bundled (not fetched at runtime) so it renders offline
+  # for field staff with poor connectivity. Plus Jakarta Sans, OFL — see
+  # assets/fonts/OFL.txt.
+  fonts:
+    - family: Plus Jakarta Sans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
+
+  # Brand logo shown in the dashboard header avatar.
+  assets:
+    - assets/branding/
