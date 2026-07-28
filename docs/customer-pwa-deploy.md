@@ -7,10 +7,13 @@ to `main` that touches the app, `amuwak_core`, or the workspace pubspec.
 ## Why not GitHub Pages
 
 GitHub Pages serves **one site per repository**, and the staff PWA already owns
-it (`robin-wambi.github.io/amuwak_staff/`, see `deploy-pwa.yml`). A second
+it (`robin-wambi.github.io/amuwak/`, see `deploy-pwa.yml`). A second
 `deploy-pages` job would not co-exist — each run would replace the other app.
-Cloudflare Pages also avoids putting `amuwak_staff` inside a customer-facing URL
-and gives a straightforward path to a real domain later.
+Cloudflare Pages also gives a straightforward path to a real domain later, and
+keeps the customer app off a URL whose path is tied to the repository name (the
+staff bundle's `--base-href` has to track that name, so a repo rename breaks it
+until a redeploy — which is exactly what happened when `amuwak_staff` became
+`amuwak`).
 
 ## One-time setup
 

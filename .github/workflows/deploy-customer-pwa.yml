@@ -1,9 +1,11 @@
 name: Deploy customer PWA to Cloudflare Pages
 
 # The staff PWA owns this repo's single GitHub Pages site, so the customer app
-# ships to Cloudflare Pages instead: its own domain (no `/amuwak_staff/` in a
-# customer-facing URL), a CDN with useful presence in East Africa, and a
-# straightforward path to a real domain later.
+# ships to Cloudflare Pages instead: its own domain, a CDN with useful presence
+# in East Africa, and a straightforward path to a real domain later. It also
+# keeps the customer app off a URL path tied to the repo name — the staff
+# bundle's `--base-href` has to track that name, so renaming the repo breaks it
+# until a redeploy.
 #
 # One-time setup is documented in docs/customer-pwa-deploy.md.
 
