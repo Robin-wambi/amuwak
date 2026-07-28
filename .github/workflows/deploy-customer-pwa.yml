@@ -1,0 +1,94 @@
+name: Deploy customer PWA to Cloudflare Pages
+
+# The staff PWA owns this repo's single GitHub Pages site, so the customer app
+# ships to Cloudflare Pages instead: its own domain, a CDN with useful presence
+# in East Africa, and a straightforward path to a real domain later. It also
+# keeps the customer app off a URL path tied to the repo name — the staff
+# bundle's `--base-href` has to track that name, so renaming the repo breaks it
+# until a redeploy.
+#
+# One-time setup is documented in docs/customer-pwa-deploy.md.
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something the bundle actually contains changes. The
+    # customer app compiles amuwak_core in, so core counts.
+    paths:
+      - 'apps/amuwak_customer/**'
+      - 'packages/amuwak_core/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/deploy-customer-pwa.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Two overlapping pushes would race to publish; let the newer one win.
+concurrency:
+  group: customer-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.32.0
+
+      # Resolve from the workspace root: this is a pub workspace, so the app's
+      # dependencies (including the local amuwak_core path dep) resolve there.
+      - name: Install Dart deps
+        run: flutter pub get
+
+      - name: Build customer web release
+        working-directory: apps/amuwak_customer
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Strip trailing newlines/whitespace from secret values — pasting into
+          # the GitHub UI often adds a trailing newline, which breaks bash line
+          # continuation and `--dart-define` parsing. (Same guard as the staff
+          # PWA workflow, which was bitten by exactly this.)
+          url="$(printf %s "$SUPABASE_URL" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          key="$(printf %s "$SUPABASE_ANON_KEY" | tr -d '\r\n' | sed 's/[[:space:]]*$//')"
+          if [ -z "$url" ] || [ -z "$key" ]; then
+            echo "::error::SUPABASE_URL / SUPABASE_ANON_KEY are empty. A build" \
+                 "without them compiles fine and then fails at runtime with an" \
+                 "unconfigured client, so stop here instead."
+            exit 1
+          fi
+          # Served from the domain root, so the default base-href is correct —
+          # no `--base-href` needed (unlike the staff app on a Pages sub-path).
+          flutter build web --release \
+            --dart-define=SUPABASE_URL="$url" \
+            --dart-define=SUPABASE_ANON_KEY="$key"
+
+      # The Drift web backend loads sqlite3.wasm + drift_worker.js at runtime;
+      # if they ever stop being copied the app breaks only once a customer opens
+      # it offline, which is far too late to notice.
+      - name: Verify the offline assets shipped
+        working-directory: apps/amuwak_customer
+        run: |
+          for f in sqlite3.wasm drift_worker.js flutter_service_worker.js; do
+            if [ ! -f "build/web/$f" ]; then
+              echo "::error::build/web/$f is missing — the PWA would fail offline."
+              exit 1
+            fi
+          done
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy apps/amuwak_customer/build/web
+            --project-name=amuwak-customer
+            --branch=main
