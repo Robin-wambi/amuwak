@@ -107,6 +107,17 @@ void main() {
         );
       });
 
+      test('is not left on the staff notice either', () {
+        // The mirror of the staff case above: neither interstitial traps the
+        // other state, so there is no way to land on a screen that cannot act
+        // on your account.
+        expect(
+          customerAuthRedirect(
+              signedIn: true, role: 'none', location: kStaffAccountRoute),
+          kCompleteProfileRoute,
+        );
+      });
+
       test('reaches the app once linking mints the customer claim', () {
         expect(
           customerAuthRedirect(
