@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import '../account/profile_screen.dart';
 import '../auth/complete_profile_screen.dart';
+import '../auth/forgot_password_screen.dart';
 import '../auth/login_screen.dart';
 import '../auth/recovery_state.dart';
+import '../auth/reset_password_screen.dart';
 import '../auth/signup_screen.dart';
 import '../auth/staff_account_screen.dart';
 import '../cart/cart_screen.dart';
@@ -133,6 +135,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: kStaffAccountRoute,
           builder: (_, __) => const StaffAccountScreen()),
+      GoRoute(
+          path: kForgotPasswordRoute,
+          builder: (_, __) => const ForgotPasswordScreen()),
+      GoRoute(
+          path: kResetPasswordRoute,
+          builder: (_, __) => const ResetPasswordScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ShellScaffold(navigationShell: navigationShell),

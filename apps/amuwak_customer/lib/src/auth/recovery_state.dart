@@ -18,6 +18,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 final recoveringProvider =
     NotifierProvider<RecoveringNotifier, bool>(RecoveringNotifier.new);
 
+/// Where Supabase should send a recovery link back to — this app's own origin.
+///
+/// Both apps share one auth project and its Site URL names the staff app, so
+/// without this a customer would follow the link into a PWA that has nothing
+/// for them.
+///
+/// An origin, never a route: Supabase appends `?code=…`, and this app runs
+/// Flutter web's default hash strategy, so naming a route would put a query
+/// string after the fragment.
+///
+/// Null off the web, where `Uri.base` is a `file:` URI and `.origin` throws.
+/// The customer app only ships to web, so that is a test or a debug run; the
+/// null simply defers to the Site URL.
+final passwordResetRedirectProvider = Provider<String?>((ref) {
+  final base = Uri.base;
+  final isWeb = base.isScheme('http') || base.isScheme('https');
+  return isWeb ? base.origin : null;
+});
+
 class RecoveringNotifier extends Notifier<bool> {
   @override
   bool build() {

@@ -22,7 +22,7 @@ class PasswordResetController {
   /// showing one message either way.
   Future<void> requestReset({
     required String email,
-    required String redirectTo,
+    required String? redirectTo,
   }) =>
       _auth.sendPasswordReset(email, redirectTo: redirectTo);
 

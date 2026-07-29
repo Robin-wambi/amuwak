@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/router.dart';
+
 /// Email + password sign-in. On success the auth stream emits and the router
 /// redirect (see `router.dart`) moves the customer to `/`.
 class LoginScreen extends ConsumerStatefulWidget {
@@ -105,6 +107,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : const Text('Sign in'),
                     ),
                     const SizedBox(height: AppSpacing.sm),
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => context.go(kForgotPasswordRoute),
+                      child: const Text('Forgot password?'),
+                    ),
                     TextButton(
                       onPressed: _busy ? null : () => context.go('/signup'),
                       child: const Text("New here? Create an account"),
