@@ -163,5 +163,32 @@ void main() {
         throwsA(isA<AuthFailure>()),
       );
     });
+
+    test('forwards a caller-supplied redirect target', () async {
+      // Two apps share this auth project and the Site URL can only point at
+      // one of them, so the customer app has to name its own origin or its
+      // customers land in the staff app.
+      when(() => goTrue.resetPasswordForEmail(any(),
+          redirectTo: any(named: 'redirectTo'))).thenAnswer((_) async {});
+
+      await service.sendPasswordReset(
+        'a@b.co',
+        redirectTo: 'https://amuwak-customer.pages.dev/',
+      );
+
+      verify(() => goTrue.resetPasswordForEmail('a@b.co',
+          redirectTo: 'https://amuwak-customer.pages.dev/')).called(1);
+    });
+
+    test('omits the redirect when none is given, deferring to the Site URL',
+        () async {
+      when(() => goTrue.resetPasswordForEmail(any(),
+          redirectTo: any(named: 'redirectTo'))).thenAnswer((_) async {});
+
+      await service.sendPasswordReset('a@b.co');
+
+      verify(() => goTrue.resetPasswordForEmail('a@b.co', redirectTo: null))
+          .called(1);
+    });
   });
 }
