@@ -162,7 +162,9 @@ void main() {
     await tester.tap(find.widgetWithText(ElevatedButton, 'Save password'));
     await tester.pump();
 
-    expect(find.text('At least 8 characters'), findsOneWidget);
+    // Wording now comes from the shared policy in amuwak_core, so both apps
+    // say the same thing.
+    expect(find.text('Use at least 8 characters'), findsOneWidget);
     verifyNever(() => auth.updatePassword(any()));
   });
 

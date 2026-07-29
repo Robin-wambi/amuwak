@@ -8,6 +8,7 @@ export 'src/shared/uuid.dart';
 export 'src/shared/format_ugx.dart';
 export 'src/shared/order_code.dart';
 export 'src/shared/email_validation.dart';
+export 'src/shared/password_policy.dart';
 
 export 'src/orders/order_status.dart';
 export 'src/orders/service_type.dart';
