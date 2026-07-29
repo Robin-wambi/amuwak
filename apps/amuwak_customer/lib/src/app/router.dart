@@ -25,6 +25,16 @@ const kCompleteProfileRoute = '/complete-profile';
 /// Where a signed-in STAFF account is sent — this app has nothing for them.
 const kStaffAccountRoute = '/staff-account';
 
+/// Where a signed-out visitor asks for a reset link.
+const kForgotPasswordRoute = '/forgot-password';
+
+/// Where a recovery link lands. The emailed link does NOT name this route — it
+/// targets the origin root, Supabase appends `?code=…`, supabase_flutter
+/// exchanges it and raises `passwordRecovery`, and the redirect below routes on
+/// that state. Naming the route in `redirectTo` would put a query string after
+/// the URL fragment, because this app runs Flutter web's default hash strategy.
+const kResetPasswordRoute = '/reset-password';
+
 /// The staff roles the access-token hook can mint (Supabase migration 0043).
 /// Staff wins over customer in that hook, so a person who is both reads as
 /// staff here.
@@ -51,14 +61,26 @@ const _staffRoles = {'driver', 'in_shop', 'manager'};
 /// A null role means the token is missing/expired mid-refresh rather than a
 /// verdict about the account (the hook always mints one of the three), so it is
 /// treated as a customer rather than bouncing someone mid-refresh.
+///
+/// [recovering] is evaluated before any role, because a recovery link signs the
+/// user in: without it they would sail past into the app and never be asked for
+/// a new password. It deliberately outranks both interstitials — a stranded
+/// account sets its password first, then finishes setup. It does NOT outrank
+/// being signed out: with no session there is nothing to update against.
 String? customerAuthRedirect({
   required bool signedIn,
   required String location,
   String? role,
+  bool recovering = false,
 }) {
-  final onAuthPage = location == '/login' || location == '/signup';
+  final onAuthPage = location == '/login' ||
+      location == '/signup' ||
+      location == kForgotPasswordRoute;
   if (!signedIn) return onAuthPage ? null : '/login';
 
+  if (recovering) {
+    return location == kResetPasswordRoute ? null : kResetPasswordRoute;
+  }
   if (_staffRoles.contains(role)) {
     return location == kStaffAccountRoute ? null : kStaffAccountRoute;
   }
@@ -67,7 +89,8 @@ String? customerAuthRedirect({
   }
   if (onAuthPage ||
       location == kStaffAccountRoute ||
-      location == kCompleteProfileRoute) {
+      location == kCompleteProfileRoute ||
+      location == kResetPasswordRoute) {
     return '/';
   }
   return null;

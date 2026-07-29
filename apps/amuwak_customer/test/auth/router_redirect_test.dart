@@ -129,6 +129,99 @@ void main() {
       });
     });
 
+    group('a password recovery in progress', () {
+      // The recovery link signs the user in, so without this state they would
+      // sail straight past into the app and never be asked for a new password.
+      test('is sent to set a new password, from anywhere', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: true,
+              role: 'customer',
+              recovering: true,
+              location: '/'),
+          kResetPasswordRoute,
+        );
+        expect(
+          customerAuthRedirect(
+              signedIn: true,
+              role: 'customer',
+              recovering: true,
+              location: '/orders/x'),
+          kResetPasswordRoute,
+        );
+      });
+
+      test('and is left there rather than looping', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: true,
+              role: 'customer',
+              recovering: true,
+              location: kResetPasswordRoute),
+          isNull,
+        );
+      });
+
+      test('outranks the staff notice', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: true,
+              role: 'manager',
+              recovering: true,
+              location: '/'),
+          kResetPasswordRoute,
+        );
+      });
+
+      test('outranks finishing setup', () {
+        // A stranded account resetting its password sets the password first,
+        // then gets asked to finish setup — not the other way round.
+        expect(
+          customerAuthRedirect(
+              signedIn: true, role: 'none', recovering: true, location: '/'),
+          kResetPasswordRoute,
+        );
+      });
+
+      test('does not outrank being signed out', () {
+        // No session means nothing to update a password against.
+        expect(
+          customerAuthRedirect(
+              signedIn: false, recovering: true, location: '/'),
+          '/login',
+        );
+      });
+
+      test('releases the user once recovery ends', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: true,
+              role: 'customer',
+              recovering: false,
+              location: kResetPasswordRoute),
+          '/',
+        );
+      });
+    });
+
+    group('the forgot-password page', () {
+      test('is reachable while signed out', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: false, location: kForgotPasswordRoute),
+          isNull,
+        );
+      });
+
+      test('is not somewhere a signed-in customer lingers', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: true, role: 'customer', location: kForgotPasswordRoute),
+          '/',
+        );
+      });
+    });
+
     group('a null role (token missing or mid-refresh, not a verdict)', () {
       // The hook always mints one of staff/customer/none, so null means the
       // token is absent or expired — not that the account is unlinked. Bouncing
