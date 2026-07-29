@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../account/profile_screen.dart';
 import '../auth/complete_profile_screen.dart';
 import '../auth/login_screen.dart';
+import '../auth/recovery_state.dart';
 import '../auth/signup_screen.dart';
 import '../auth/staff_account_screen.dart';
 import '../cart/cart_screen.dart';
@@ -107,6 +108,11 @@ String? customerAuthRedirect({
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
   ref.listen(authStateProvider, (_, __) => refresh.value++);
+  // Recovery starts and ends without the auth state itself changing shape, so
+  // the redirect needs its own trigger — otherwise the user sits on the wrong
+  // screen until some unrelated auth event happens to bump the listenable.
+  // This also keeps the notifier alive so its own listener stays subscribed.
+  ref.listen(recoveringProvider, (_, __) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
@@ -115,6 +121,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) => customerAuthRedirect(
       signedIn: ref.read(currentUserIdProvider) != null,
       role: ref.read(currentRoleProvider),
+      recovering: ref.read(recoveringProvider),
       location: state.matchedLocation,
     ),
     routes: [
