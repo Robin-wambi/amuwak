@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../account/profile_screen.dart';
+import '../auth/complete_profile_screen.dart';
 import '../auth/login_screen.dart';
 import '../auth/signup_screen.dart';
+import '../auth/staff_account_screen.dart';
 import '../cart/cart_screen.dart';
 import '../chat/order_chat_screen.dart';
 import '../home/home_screen.dart';
@@ -17,20 +19,57 @@ import '../orders/place_order/place_order_screen.dart';
 import '../payments/payments_screen.dart';
 import 'shell_scaffold.dart';
 
+/// Where a signed-in user who still needs a `customers` row is sent.
+const kCompleteProfileRoute = '/complete-profile';
+
+/// Where a signed-in STAFF account is sent — this app has nothing for them.
+const kStaffAccountRoute = '/staff-account';
+
+/// The staff roles the access-token hook can mint (Supabase migration 0043).
+/// Staff wins over customer in that hook, so a person who is both reads as
+/// staff here.
+const _staffRoles = {'driver', 'in_shop', 'manager'};
+
 /// Pure redirect policy for the customer app, extracted so it is unit-testable
 /// without pumping a live router. Returns the path to redirect to, or null to
 /// stay put.
 ///
-/// - Signed-out visitors are sent to `/login` (but may sit on `/login` or
-///   `/signup`).
-/// - Signed-in customers are bounced off the auth pages back to `/`.
+/// Being signed in is NOT the same as being a customer. `auth.users` is shared
+/// with the staff app, and the `user_role` claim is the only thing that says
+/// which kind of account this is:
+///
+/// - signed out → `/login` (but may sit on `/login` / `/signup`).
+/// - staff role → [kStaffAccountRoute]. Without this a rider who signs in here
+///   lands on a customer home that renders empty, because every query is scoped
+///   by `auth_customer_id()` and they have no `customers` row.
+/// - `'none'` → [kCompleteProfileRoute]. The auth user exists but no
+///   `customers` row is linked: signup created the account and then failed
+///   before `link_or_create_customer` ran. Signing in again never repaired it,
+///   which stranded the account permanently.
+/// - `'customer'` → the app, bounced off the auth and interstitial pages.
+///
+/// A null role means the token is missing/expired mid-refresh rather than a
+/// verdict about the account (the hook always mints one of the three), so it is
+/// treated as a customer rather than bouncing someone mid-refresh.
 String? customerAuthRedirect({
   required bool signedIn,
   required String location,
+  String? role,
 }) {
   final onAuthPage = location == '/login' || location == '/signup';
   if (!signedIn) return onAuthPage ? null : '/login';
-  if (onAuthPage) return '/';
+
+  if (_staffRoles.contains(role)) {
+    return location == kStaffAccountRoute ? null : kStaffAccountRoute;
+  }
+  if (role == 'none') {
+    return location == kCompleteProfileRoute ? null : kCompleteProfileRoute;
+  }
+  if (onAuthPage ||
+      location == kStaffAccountRoute ||
+      location == kCompleteProfileRoute) {
+    return '/';
+  }
   return null;
 }
 
@@ -52,11 +91,18 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) => customerAuthRedirect(
       signedIn: ref.read(currentUserIdProvider) != null,
+      role: ref.read(currentRoleProvider),
       location: state.matchedLocation,
     ),
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
+      GoRoute(
+          path: kCompleteProfileRoute,
+          builder: (_, __) => const CompleteProfileScreen()),
+      GoRoute(
+          path: kStaffAccountRoute,
+          builder: (_, __) => const StaffAccountScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ShellScaffold(navigationShell: navigationShell),
