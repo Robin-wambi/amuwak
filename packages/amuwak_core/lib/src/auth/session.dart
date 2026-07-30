@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
+import 'mfa_service.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+final mfaServiceProvider = Provider<MfaService>((ref) => MfaService());
 
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return ref.watch(authServiceProvider).authStateChanges;

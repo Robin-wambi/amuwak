@@ -10,6 +10,7 @@ class TotpEnrolment {
   const TotpEnrolment({
     required this.factorId,
     required this.qrCodeSvg,
+    required this.otpauthUri,
     required this.secret,
   });
 
@@ -18,7 +19,14 @@ class TotpEnrolment {
 
   /// An SVG, not a URL. Render it directly, or prepend
   /// `data:image/svg+xml;utf-8,` to use it as an image source.
+  ///
+  /// Both apps prefer [otpauthUri] — they already ship `qr_flutter` for order
+  /// tags, so drawing the code themselves avoids adding an SVG renderer.
   final String qrCodeSvg;
+
+  /// The raw `otpauth://` URI the QR encodes. Render it with the app's existing
+  /// QR widget, or hand it to the OS to open an authenticator app directly.
+  final String otpauthUri;
 
   /// Shown alongside the QR for anyone who cannot scan one — a cracked screen
   /// or a desktop browser with no camera.
@@ -58,6 +66,7 @@ class MfaService {
         return TotpEnrolment(
           factorId: response.id,
           qrCodeSvg: totp.qrCode,
+          otpauthUri: totp.uri,
           secret: totp.secret,
         );
       });

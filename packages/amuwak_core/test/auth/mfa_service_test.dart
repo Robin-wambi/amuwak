@@ -55,6 +55,10 @@ void main() {
       expect(enrolment.factorId, 'factor-1');
       expect(enrolment.secret, 'SECRET');
       expect(enrolment.qrCodeSvg, '<svg/>');
+      // The raw otpauth URI too: the apps already ship qr_flutter for order
+      // tags, so they render this themselves rather than pulling in an SVG
+      // renderer just for Supabase's pre-drawn QR.
+      expect(enrolment.otpauthUri, 'otpauth://x');
     });
 
     test('wraps AuthException in AuthFailure', () async {
