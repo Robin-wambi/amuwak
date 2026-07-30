@@ -40,5 +40,6 @@ export 'src/orders/pricing/line_item.dart';
 export 'src/pricing/cart_estimate.dart';
 
 export 'src/auth/auth_service.dart';
+export 'src/auth/mfa_service.dart';
 export 'src/auth/session.dart';
 export 'src/bootstrap/app_config.dart';
