@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:amuwak_staff/src/auth/auth_gate.dart';
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_staff/src/auth/login_screen.dart';
+import 'package:amuwak_staff/src/auth/mfa_challenge_screen.dart';
 import 'package:amuwak_staff/src/auth/set_password_screen.dart';
 import 'package:amuwak_staff/src/dashboard/current_staff_provider.dart';
 import 'package:amuwak_staff/src/dashboard/staff_dashboard_screen.dart';
@@ -18,6 +19,8 @@ import 'package:amuwak_staff/src/sync/staff_repository.dart';
 class _MockAuthService extends Mock implements AuthService {}
 
 class _MockStaffRepository extends Mock implements StaffRepository {}
+
+class _MockMfaService extends Mock implements MfaService {}
 
 StaffData _staff(String displayName) => StaffData(
       id: 'u1',
@@ -39,6 +42,10 @@ final _testUserIdProvider = StateProvider<String?>((_) => 'u1');
 
 /// Overrides that let the heavy dashboard build without touching Supabase.
 List<Override> _dashboardStubs() => [
+      // The real provider builds an MfaService, which reaches for a Supabase
+      // instance no widget test initialises. False is also what these tests
+      // mean: no second factor owed, so the gate falls through.
+      needsMfaChallengeProvider.overrideWithValue(false),
       currentRoleProvider.overrideWithValue(null),
       currentStaffProvider.overrideWith((ref) => Stream<StaffData?>.value(null)),
       ordersStreamProvider
@@ -58,6 +65,55 @@ Future<void> _pumpGate(
 }
 
 void main() {
+  testWidgets('shows the MFA challenge before the dashboard', (tester) async {
+    // No dashboard stubs: if the challenge works, the dashboard never builds.
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u1'),
+      currentAuthEventProvider.overrideWithValue(AuthChangeEvent.signedIn),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      needsMfaChallengeProvider.overrideWithValue(true),
+      mfaServiceProvider.overrideWithValue(_MockMfaService()),
+    ]);
+    await tester.pump();
+
+    expect(find.byType(MfaChallengeScreen), findsOneWidget);
+    expect(find.byType(StaffDashboardScreen), findsNothing);
+  });
+
+  testWidgets('shows the MFA challenge BEFORE letting a recovery set a password',
+      (tester) async {
+    // Otherwise a password reset is an MFA bypass: anyone with access to the
+    // mailbox could set a new password and get in without the second factor,
+    // which is exactly the takeover MFA exists to stop.
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u1'),
+      currentAuthEventProvider
+          .overrideWithValue(AuthChangeEvent.passwordRecovery),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      needsMfaChallengeProvider.overrideWithValue(true),
+      mfaServiceProvider.overrideWithValue(_MockMfaService()),
+    ]);
+    await tester.pump();
+
+    expect(find.byType(MfaChallengeScreen), findsOneWidget);
+    expect(find.byType(SetPasswordScreen), findsNothing);
+  });
+
+  testWidgets('does not challenge a staff member who has not enrolled',
+      (tester) async {
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u1'),
+      currentAuthEventProvider.overrideWithValue(AuthChangeEvent.signedIn),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      ..._dashboardStubs(),
+    ]);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byType(MfaChallengeScreen), findsNothing);
+    expect(find.byType(StaffDashboardScreen), findsOneWidget);
+  });
+
   testWidgets('shows LoginScreen when nobody is signed in', (tester) async {
     await _pumpGate(tester, overrides: [
       currentUserIdProvider.overrideWithValue(null),
@@ -75,6 +131,7 @@ void main() {
       currentAuthEventProvider
           .overrideWithValue(AuthChangeEvent.passwordRecovery),
       authServiceProvider.overrideWithValue(_MockAuthService()),
+      needsMfaChallengeProvider.overrideWithValue(false),
     ]);
 
     expect(find.byType(SetPasswordScreen), findsOneWidget);
@@ -110,6 +167,7 @@ void main() {
           .overrideWithValue(AuthChangeEvent.passwordRecovery),
       authServiceProvider.overrideWithValue(auth),
       staffRepositoryProvider.overrideWithValue(staffRepo),
+      needsMfaChallengeProvider.overrideWithValue(false),
       currentRoleProvider.overrideWithValue(null),
       currentStaffProvider
           .overrideWith((ref) => Stream<StaffData?>.value(_staff('Existing'))),

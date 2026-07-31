@@ -1404,6 +1404,27 @@ void main() {
   // ---------------------------------------------- Pricing entry role-gating
 
   testWidgets(
+    'Account tab offers two-factor setup to every role, drivers included',
+    (tester) async {
+      // A driver account can create and complete orders, so it is worth
+      // protecting too — this entry is not gated the way pricing and invites
+      // are.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        currentRoleProvider.overrideWith((ref) => 'driver'),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Two-factor authentication'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'Account tab hides Pricing settings for the driver role (write-gated)',
     (tester) async {
       tester.view.physicalSize = const Size(800, 1600);

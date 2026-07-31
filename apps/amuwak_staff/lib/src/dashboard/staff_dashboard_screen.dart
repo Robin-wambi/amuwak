@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../auth/mfa_enrolment_screen.dart';
 import '../auth/sign_out.dart';
 import 'current_staff_provider.dart';
 import 'dashboard_header_content.dart';
@@ -494,6 +495,23 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     );
   }
 
+  void _openTwoFactor() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (routeContext) => MfaEnrolmentScreen(
+          onCompleted: () {
+            Navigator.of(routeContext).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Two-factor authentication is on.'),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   void _openPricingCatalog() {
     final catalogRepo = ref.read(pricingCatalogRepositoryProvider);
     Navigator.of(context).push<void>(
@@ -680,6 +698,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
               onSignOut: _onSignOutPressed,
               onOpenPricingSettings: _openPricingSettings,
               onInviteStaff: _openInviteStaff,
+              onOpenTwoFactor: _openTwoFactor,
               roleText:
                   roleLabel(ref.watch(currentRoleProvider)) ?? 'Operations staff',
               // Pricing writes are gated to in_shop + manager (migration 0024),
@@ -899,6 +918,7 @@ class _AccountTab extends StatelessWidget {
     required this.onSignOut,
     required this.onOpenPricingSettings,
     required this.onInviteStaff,
+    required this.onOpenTwoFactor,
     required this.roleText,
     required this.canManagePricing,
     required this.canInviteStaff,
@@ -907,6 +927,10 @@ class _AccountTab extends StatelessWidget {
   final VoidCallback onSignOut;
   final VoidCallback onOpenPricingSettings;
   final VoidCallback onInviteStaff;
+
+  /// Opens authenticator enrolment. Shown to every role — a driver's account
+  /// can create and complete orders, so it is worth protecting too.
+  final VoidCallback onOpenTwoFactor;
 
   /// Human label for the signed-in staff member's role, mirroring the header
   /// chip (falls back to a generic label when there's no role claim).
@@ -993,6 +1017,21 @@ class _AccountTab extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg2),
         ],
+        // Optional for now: staff enrol at their own pace. Enforcement (aal2
+        // in RLS) is a separate, deliberate step once everyone has a factor —
+        // turning it on first would lock the fleet out of production.
+        AppCard(
+          onTap: onOpenTwoFactor,
+          child: Row(
+            children: [
+              Icon(Icons.shield_outlined, color: colorScheme.primary),
+              const SizedBox(width: AppSpacing.md),
+              const Expanded(child: Text('Two-factor authentication')),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg2),
         if (canInviteStaff) ...[
           AppCard(
             onTap: onInviteStaff,

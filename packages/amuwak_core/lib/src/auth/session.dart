@@ -8,6 +8,16 @@ final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
 final mfaServiceProvider = Provider<MfaService>((ref) => MfaService());
 
+/// Whether this session still owes a second factor.
+///
+/// Recomputed on every auth event, because clearing the challenge upgrades the
+/// session to aal2 and raises `mfaChallengeVerified` — the gate has to notice
+/// that and let the user through.
+final needsMfaChallengeProvider = Provider<bool>((ref) {
+  ref.watch(authStateProvider);
+  return ref.watch(mfaServiceProvider).needsChallenge;
+});
+
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return ref.watch(authServiceProvider).authStateChanges;
 });
