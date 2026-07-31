@@ -125,8 +125,12 @@ snackbar reporting the outcome.
 - Unknown target → 404.
 - Target has no verified factor → success with `factorsCleared: 0`, surfaced as
   "X had no two-factor set up".
-- Trigger rejection on the two-manager rule → surfaced in the UI as an
-  explanation, not a raw database error.
+- Trigger rejection on the two-manager rule → **no in-app path reaches this
+  yet.** Role changes are out of scope (see below), so the only ways to hit the
+  trigger are the Supabase dashboard and direct SQL, where the exception message
+  is the interface. It says what happened and what to do: "At least two active
+  managers are required (this would leave N). Promote another manager first."
+  If a role-change UI is ever added, it must catch and explain this.
 
 ## Testing
 
