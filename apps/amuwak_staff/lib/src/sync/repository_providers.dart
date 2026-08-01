@@ -6,6 +6,7 @@ import '../expenses/expense.dart';
 import '../expenses/expenses_repository.dart';
 import '../orders/order.dart';
 import '../staff/invite_staff_service.dart';
+import '../staff/reset_staff_mfa_service.dart';
 import 'customers_repository.dart';
 import 'orders_repository.dart';
 import 'outbox_repository.dart';
@@ -100,4 +101,8 @@ final expensesStreamProvider = StreamProvider<List<Expense>>(
 
 final inviteStaffServiceProvider = Provider<InviteStaffService>(
   (ref) => InviteStaffService(ref.watch(supabaseClientProvider)),
+);
+
+final resetStaffMfaServiceProvider = Provider<ResetStaffMfaService>(
+  (ref) => ResetStaffMfaService(ref.watch(supabaseClientProvider)),
 );
