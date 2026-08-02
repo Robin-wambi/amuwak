@@ -76,11 +76,18 @@ These cannot be done from app code — an operator must run them:
 ## Recovering a staff member who lost their authenticator
 
 Any active manager can do this from the app: **Account → Staff**, tap the
-person, confirm. Their TOTP factor is cleared, they are signed out everywhere,
-and they sign in with their password and enrol a new authenticator.
+person, confirm. Their TOTP factor is cleared, their existing sessions are
+invalidated, and they sign in again with just their password and enrol a new
+authenticator.
 
 Managers can reset each other, which is why the database requires at least two
 active managers (migration 0054). Nobody can reset themselves.
+
+A manager who has enrolled their own TOTP must complete their own two-factor
+check (be at `aal2`) before they can clear someone else's — if you're a
+manager sitting at `aal1` with a factor already enrolled, you'll see "Complete
+your own two-factor check first." This is deliberate: without it, a stolen
+password alone would be enough to disable MFA on any account.
 
 **If you are down to one manager**, no one in the app can unlock them. Recover
 from the Supabase dashboard: Authentication → Users → the user → remove the MFA

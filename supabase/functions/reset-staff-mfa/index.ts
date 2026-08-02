@@ -120,10 +120,16 @@ Deno.serve(async (req) => {
     return json({ error: 'Only managers can do that' }, 403);
   }
 
-  // Rule 2: the caller must not owe a challenge of their own.
-  const { data: callerFactors } = await admin.auth.admin.mfa.listFactors({
-    userId: callerId,
-  });
+  // Rule 2: the caller must not owe a challenge of their own. An unknown
+  // caller factor state must fail closed — if this lookup errors we cannot
+  // tell whether the caller has a verified factor, and falling through would
+  // silently disable the rule, letting a stolen aal1 password strip 2FA off
+  // any account.
+  const { data: callerFactors, error: callerFactorsError } =
+    await admin.auth.admin.mfa.listFactors({ userId: callerId });
+  if (callerFactorsError) {
+    return json({ error: 'Could not verify your two-factor status' }, 500);
+  }
   const callerHasVerified = (callerFactors?.factors ?? []).some(
     (f: { status: string }) => f.status === 'verified',
   );
@@ -154,23 +160,51 @@ Deno.serve(async (req) => {
     (f: { status: string }) => f.status === 'verified',
   );
 
+  // Track how many deletes actually succeeded so a partial failure still
+  // gets an audit row — a target left with one factor destroyed and one
+  // remaining must never be invisible to the audit log.
+  let clearedCount = 0;
   for (const factor of verified) {
     const { error: deleteError } = await admin.auth.admin.mfa.deleteFactor({
       id: factor.id,
       userId: targetId,
     });
     if (deleteError) {
+      const { error: auditError } = await admin.from('mfa_reset_audit').insert({
+        actor_staff_id: callerId,
+        target_staff_id: targetId,
+        factors_cleared: clearedCount,
+      });
+      if (auditError) {
+        console.error('reset-staff-mfa: audit insert failed after partial delete', {
+          actorStaffId: callerId,
+          targetStaffId: targetId,
+          factorsCleared: clearedCount,
+          error: auditError.message,
+        });
+      }
       return json({ error: 'Could not clear their two-factor' }, 500);
     }
+    clearedCount += 1;
   }
 
   // Audit AFTER the deletes, so the log records what actually happened rather
-  // than what was attempted.
-  await admin.from('mfa_reset_audit').insert({
+  // than what was attempted. A failed insert is non-fatal to the response —
+  // the factors really were cleared and the manager should not be told
+  // otherwise — but it must not be silent, so log it for the operator.
+  const { error: auditError } = await admin.from('mfa_reset_audit').insert({
     actor_staff_id: callerId,
     target_staff_id: targetId,
-    factors_cleared: verified.length,
+    factors_cleared: clearedCount,
   });
+  if (auditError) {
+    console.error('reset-staff-mfa: audit insert failed', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+      factorsCleared: clearedCount,
+      error: auditError.message,
+    });
+  }
 
-  return json({ factors_cleared: verified.length }, 200);
+  return json({ factors_cleared: clearedCount }, 200);
 });
