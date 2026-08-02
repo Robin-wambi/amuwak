@@ -76,9 +76,11 @@ These cannot be done from app code — an operator must run them:
 ## Recovering a staff member who lost their authenticator
 
 Any active manager can do this from the app: **Account → Staff**, tap the
-person, confirm. Their TOTP factor is cleared, their existing sessions are
-invalidated, and they sign in again with just their password and enrol a new
-authenticator.
+person, confirm. Clearing the factor ends the sessions that were elevated by
+it; in practice, the target signs in again with their password alone and is
+prompted to enrol a new authenticator (the exact session behaviour is
+confirmed by the function's manual deployment check, not by anything in this
+repo).
 
 Managers can reset each other, which is why the database requires at least two
 active managers (migration 0054). Nobody can reset themselves.
