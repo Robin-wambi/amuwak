@@ -35,6 +35,7 @@ import '../pricing/pricing_settings.dart';
 import '../pricing/pricing_settings_screen.dart';
 import '../pricing/pricing_catalog_screen.dart';
 import '../staff/invite_staff_screen.dart';
+import '../staff/staff_list_screen.dart';
 import '../printing/printing_providers.dart';
 import '../sync/repository_providers.dart';
 // Phase 5 (offline UX): re-add these to surface pending/dead-letter state.
@@ -489,6 +490,21 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     );
   }
 
+  void _openStaffList() {
+    final resetService = ref.read(resetStaffMfaServiceProvider);
+    final staffRepo = ref.read(staffRepositoryProvider);
+    final myId = ref.read(currentUserIdProvider) ?? '';
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => StaffListScreen(
+          staff: staffRepo.watchAll(),
+          onReset: resetService.reset,
+          currentStaffId: myId,
+        ),
+      ),
+    );
+  }
+
   void _openTwoFactor() {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -697,6 +713,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
               onSignOut: _onSignOutPressed,
               onOpenPricingSettings: _openPricingSettings,
               onInviteStaff: _openInviteStaff,
+              onOpenStaff: _openStaffList,
               onOpenTwoFactor: _openTwoFactor,
               twoFactorEnabled: ref.watch(mfaEnabledProvider).valueOrNull,
               roleText:
@@ -918,6 +935,7 @@ class _AccountTab extends StatelessWidget {
     required this.onSignOut,
     required this.onOpenPricingSettings,
     required this.onInviteStaff,
+    required this.onOpenStaff,
     required this.onOpenTwoFactor,
     required this.twoFactorEnabled,
     required this.roleText,
@@ -928,6 +946,10 @@ class _AccountTab extends StatelessWidget {
   final VoidCallback onSignOut;
   final VoidCallback onOpenPricingSettings;
   final VoidCallback onInviteStaff;
+
+  /// Opens the managers-only staff list, whose action is clearing a lost
+  /// authenticator.
+  final VoidCallback onOpenStaff;
 
   /// Opens authenticator enrolment. Shown to every role — a driver's account
   /// can create and complete orders, so it is worth protecting too.
@@ -1046,6 +1068,18 @@ class _AccountTab extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg2),
         if (canInviteStaff) ...[
+          AppCard(
+            onTap: onOpenStaff,
+            child: Row(
+              children: [
+                Icon(Icons.groups_outlined, color: colorScheme.primary),
+                const SizedBox(width: AppSpacing.md),
+                const Expanded(child: Text('Staff')),
+                const Icon(Icons.chevron_right_rounded),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg2),
           AppCard(
             onTap: onInviteStaff,
             child: Row(
