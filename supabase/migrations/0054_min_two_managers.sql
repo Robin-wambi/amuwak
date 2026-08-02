@@ -50,6 +50,12 @@ BEGIN
     END IF;
   END IF;
 
+  -- Serialize concurrent removals. Without this, two transactions each
+  -- removing a DIFFERENT manager would both count the other's row as still
+  -- active, both pass, and jointly drop the estate below the floor. The lock
+  -- is transaction-scoped, so it releases on commit or rollback.
+  PERFORM pg_advisory_xact_lock(hashtext('staff_min_two_managers'));
+
   SELECT count(*) INTO remaining
     FROM staff
    WHERE role = 'manager' AND active AND deleted_at IS NULL
