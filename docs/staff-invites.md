@@ -72,3 +72,27 @@ These cannot be done from app code — an operator must run them:
 3. Sign out → **Forgot password?** → complete the reset → sign in again.
 4. Negative: a non-manager calling the function is rejected (403); a duplicate
    username/email returns a clear error.
+
+## Recovering a staff member who lost their authenticator
+
+Any active manager can do this from the app: **Account → Staff**, tap the
+person, confirm. Their TOTP factor is cleared, they are signed out everywhere,
+and they sign in with their password and enrol a new authenticator.
+
+Managers can reset each other, which is why the database requires at least two
+active managers (migration 0054). Nobody can reset themselves.
+
+**If you are down to one manager**, no one in the app can unlock them. Recover
+from the Supabase dashboard: Authentication → Users → the user → remove the MFA
+factor. Avoid this situation by keeping a second manager. Note the database will
+refuse to demote, deactivate or delete a manager that would leave fewer than
+two — promote a replacement first.
+
+**Deploying the function:**
+
+```bash
+supabase functions deploy reset-staff-mfa
+```
+
+No extra secrets: it uses the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+that Supabase injects automatically.
