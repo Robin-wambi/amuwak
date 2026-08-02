@@ -9,7 +9,6 @@ SELECT plan(4);
 
 INSERT INTO public.staff (id, username, display_name, role, active) VALUES
   ('00000000-0000-0000-0000-0000000000a1', 'mgr_a', 'Manager A', 'manager', true),
-  ('00000000-0000-0000-0000-0000000000a2', 'mgr_b', 'Manager B', 'manager', true),
   ('00000000-0000-0000-0000-0000000000a3', 'drv_a', 'Driver A', 'driver', true);
 
 INSERT INTO public.mfa_reset_audit
@@ -43,9 +42,10 @@ SELECT throws_ok('client_insert', '42501',
 
 PREPARE client_delete AS
   DELETE FROM mfa_reset_audit;
+EXECUTE client_delete;
 SELECT is(
   (SELECT count(*)::int FROM mfa_reset_audit), 1,
-  'the log survives a delete attempt');
+  'the log survives an attempted delete (RLS matches no rows)');
 
 SELECT * FROM finish();
 ROLLBACK;
