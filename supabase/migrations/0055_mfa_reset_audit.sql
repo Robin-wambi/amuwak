@@ -19,7 +19,8 @@ CREATE INDEX mfa_reset_audit_target_idx
 
 ALTER TABLE mfa_reset_audit ENABLE ROW LEVEL SECURITY;
 
--- is_active_manager() (0054), NOT auth_staff_role(): 0039 makes the latter
--- return 'manager' for drivers, which would expose the log to every rider.
+-- is_active_manager() (0054) rather than auth_staff_role(): the latter checks
+-- `active` but not `deleted_at IS NULL`, so a soft-deleted manager would keep
+-- read access to the security-audit log. Both exclude drivers.
 CREATE POLICY mfa_reset_audit_manager_read ON mfa_reset_audit FOR SELECT
   USING (is_active_manager(auth.uid()));

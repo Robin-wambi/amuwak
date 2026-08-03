@@ -11,9 +11,10 @@
 // land at login, sign in with their password, and enrol again.
 //
 // Three rules, and the second is what makes this safe rather than a hole:
-//   1. Caller is an ACTIVE MANAGER, read from the raw staff.role column.
-//      NOT auth_staff_role() — migration 0039 makes that return 'manager' for
-//      drivers, so every RLS-style check passes for a rider.
+//   1. Caller is an ACTIVE MANAGER, read from the raw staff.role column. This
+//      client holds the service-role key, which bypasses RLS entirely, so there
+//      is no policy doing this for us — the check has to be explicit here.
+//      Requires deleted_at IS NULL too, which auth_staff_role() does not.
 //   2. Caller does not OWE an MFA challenge. A locked-out manager still holds a
 //      valid aal1 session; the app hides the UI but the JWT works. Without this,
 //      a stolen password alone could strip 2FA off any account and MFA would be

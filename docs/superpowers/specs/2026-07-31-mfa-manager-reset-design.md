@@ -1,5 +1,18 @@
 # MFA recovery: manager-mediated reset
 
+> **Correction (2026-08-03).** Earlier drafts of this spec asserted that
+> migration 0039 makes `auth_staff_role()` return `'manager'` for drivers, and
+> justified several decisions with it. That is false for the current schema:
+> `0040_create_pickup_rpc.sql:23-27` redefines the helper back to a plain
+> `SELECT role`, undoing 0039's mapping. Verified against a live database — the
+> helper returns `'driver'` for an active driver, and a driver's attempt to
+> promote themselves is already denied by RLS.
+>
+> The decisions below did not change; only their stated reasons, which are now
+> the real ones. The residual difference that does matter: `auth_staff_role()`
+> checks `active` but not `deleted_at IS NULL`, whereas `is_active_manager()`
+> checks both.
+
 ## Problem
 
 Supabase TOTP has no native recovery codes. A staff member who loses their
@@ -57,10 +70,10 @@ a privileged action behind a server-side role check.
 
 ### Authorisation rules
 
-**Caller is an active manager.** Checked against the raw `staff.role` column,
-deliberately NOT `auth_staff_role()` — migration 0039 makes that helper return
-`'manager'` for drivers, so every RLS policy checking for a manager is already
-satisfied by a driver. RLS cannot be the boundary for this action.
+**Caller is an active manager.** Checked against the raw `staff.role` column.
+The function's client holds the service-role key, which bypasses RLS entirely,
+so no policy is doing this for us — the check has to be explicit. It also
+requires `deleted_at IS NULL`, which `auth_staff_role()` does not.
 
 **Caller does not owe an MFA challenge.** This is the rule that makes the
 feature safe rather than a hole. Once enforcement lands, a locked-out manager
@@ -93,8 +106,11 @@ Fires only on changes that *decrease* the active-manager count. Deactivating a
 driver is unaffected, and promoting someone to reach two is always allowed, so
 an estate currently sitting at one manager can still climb out.
 
-A trigger rather than RLS or app logic, for the 0039 reason above: an
-RLS-based guard would let a driver demote the managers.
+A trigger rather than RLS or app logic, because they answer a different
+question. RLS decides *whether this person may write the staff table*; the rule
+here is *whether this particular write would leave the estate below two
+managers*. A policy cannot count the rows that would remain after its own
+statement, and app logic is bypassed by any direct PostgREST call.
 
 ### Audit
 

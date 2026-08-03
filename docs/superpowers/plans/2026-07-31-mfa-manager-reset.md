@@ -11,7 +11,21 @@
 ## Global Constraints
 
 - **"Active manager" means exactly `role = 'manager' AND active AND deleted_at IS NULL`.** Used identically by the trigger, the audit RLS, and the Edge Function.
-- **Never use `auth_staff_role()` for manager checks in this feature.** Migration 0039 makes it return `'manager'` for drivers, so any check built on it passes for a driver.
+- **Use `is_active_manager()` (or the raw `staff.role` column) for manager checks in this feature, not `auth_staff_role()`.** The helper checks `active` but not `deleted_at IS NULL`, so a soft-deleted manager still satisfies it. In the Edge Function the check must be explicit regardless: the service-role client bypasses RLS entirely.
+
+> **Correction (2026-08-03).** This plan was written on the premise that
+> migration 0039 makes `auth_staff_role()` return `'manager'` for drivers, and
+> repeats it in the embedded code blocks below. **That premise is false for the
+> current schema** — `0040_create_pickup_rpc.sql:23-27` reverts the helper to a
+> plain `SELECT role`. Verified live: it returns `'driver'` for an active
+> driver, and RLS already denies a driver's self-promotion.
+>
+> Consequences: a planned migration 0056 (a staff-identity guard trigger) was
+> written against this false premise, empirically shown to close no live hole,
+> and dropped. The shipped code did not otherwise change — only the reasons in
+> its comments, which the committed files now state correctly. The embedded
+> snippets below are left as the historical record and no longer match the
+> files verbatim.
 - Migration numbering continues from `0053`; this plan adds `0054` and `0055`.
 - Every pgTAP file goes in `supabase/tests/` named after its migration.
 - Flutter tests run **one file at a time** on this host: `flutter test <path> --timeout=none`. Never run two Flutter commands concurrently — they crash the tool.

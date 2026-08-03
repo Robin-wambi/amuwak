@@ -3,13 +3,20 @@
 -- authenticator is unlocked by a manager. That only works if a locked-out
 -- manager has a colleague, so the estate must never fall to one active manager.
 --
--- Enforced by trigger rather than RLS or app code on purpose. Migration 0039
--- made auth_staff_role() return 'manager' for drivers, so an RLS-based guard
--- would let a driver demote the managers.
+-- Enforced by trigger rather than RLS on purpose, and not because RLS is
+-- untrustworthy: RLS answers "may this person write the staff table at all",
+-- which is a different question from "would this particular write leave the
+-- estate below two managers". A policy cannot count the rows that would remain
+-- after its own statement. Nor can app code, which any direct PostgREST call
+-- bypasses.
 
 -- The single definition of "active manager", shared by the trigger below and
--- the audit policy in 0055. Deliberately reads staff.role directly rather than
--- auth_staff_role(), for the 0039 reason above.
+-- the audit policy in 0055.
+--
+-- Reads staff.role directly rather than calling auth_staff_role(), which
+-- deliberately answers a narrower question: it checks `active` but NOT
+-- `deleted_at IS NULL`, so a soft-deleted manager still satisfies it. Recovery
+-- authority should not survive a soft delete.
 CREATE OR REPLACE FUNCTION is_active_manager(p_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public AS $$
