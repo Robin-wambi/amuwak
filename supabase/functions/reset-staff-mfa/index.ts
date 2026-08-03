@@ -47,10 +47,16 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-/// Reads a claim out of the bearer token without verifying it. Safe here
-/// because getUser() below verifies the signature; this only reads `aal`,
-/// which getUser does not surface.
-function aalFromJwt(token: string): string | null {
+/// Reads a claim out of the bearer token without verifying its signature. Safe
+/// only because getUser() verified this exact token string and established
+/// [expectedSub] from it; this reads `aal`, which getUser does not surface.
+///
+/// [expectedSub] makes that invariant explicit rather than positional. Rule 2
+/// is the rule that stops a stolen password from stripping 2FA off an account,
+/// and it has already regressed once — if a future refactor threads a different
+/// token in here, this returns null and the caller fails CLOSED instead of the
+/// rule silently evaporating.
+function aalFromJwt(token: string, expectedSub: string): string | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
@@ -58,6 +64,7 @@ function aalFromJwt(token: string): string | null {
     const payload = JSON.parse(
       atob(padded.replace(/-/g, '+').replace(/_/g, '/')),
     );
+    if (payload.sub !== expectedSub) return null;
     return typeof payload.aal === 'string' ? payload.aal : null;
   } catch {
     return null;
@@ -92,7 +99,11 @@ Deno.serve(async (req) => {
 
   let body: { target_staff_id?: unknown };
   try {
-    body = await req.json();
+    // `?? {}` is load-bearing: a body of literal `null` RESOLVES rather than
+    // throwing, so the catch never fires and the property read below would
+    // raise a TypeError that escapes the handler — returning a bare 500 with no
+    // CORS headers, which this PWA surfaces as an opaque network failure.
+    body = (await req.json()) ?? {};
   } catch {
     return json({ error: 'Invalid request' }, 400);
   }
@@ -133,7 +144,7 @@ Deno.serve(async (req) => {
   const callerHasVerified = (callerFactors?.factors ?? []).some(
     (f: { status: string }) => f.status === 'verified',
   );
-  if (callerHasVerified && aalFromJwt(token) !== 'aal2') {
+  if (callerHasVerified && aalFromJwt(token, callerId) !== 'aal2') {
     return json(
       { error: 'Complete your own two-factor check first' },
       403,
