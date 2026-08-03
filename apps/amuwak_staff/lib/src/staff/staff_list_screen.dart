@@ -25,7 +25,10 @@ class StaffListScreen extends ConsumerStatefulWidget {
     required this.currentStaffId,
   });
 
-  final Stream<List<StaffData>> staff;
+  /// A factory rather than a stream, so Retry can genuinely re-subscribe. A
+  /// bare Stream cannot be re-listened to once it has errored, which would make
+  /// the retry button a lie.
+  final Stream<List<StaffData>> Function() staff;
   final ResetStaffMfaFn onReset;
 
   /// Used to hide the reset action on the manager's own row. The server refuses
@@ -37,14 +40,22 @@ class StaffListScreen extends ConsumerStatefulWidget {
 }
 
 class _StaffListScreenState extends ConsumerState<StaffListScreen> {
+  /// Bumped by Retry. Used as the StreamBuilder's key so a new subscription is
+  /// created rather than the failed one being reused.
+  int _attempt = 0;
+
   Future<void> _confirmAndReset(StaffData member) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Reset two-factor?'),
+        // Deliberately not "signed out everywhere": deleteFactor's cascade is
+        // scoped to sessions elevated by the deleted factor, and when they have
+        // no factor enrolled nothing happens to their sessions at all. The
+        // runbook was softened for the same reason in 719e195.
         content: Text(
-          '${member.displayName} will be signed out everywhere and will sign '
-          'in with just their password, then set up a new authenticator.',
+          '${member.displayName} will sign in with just their password and be '
+          'asked to set up a new authenticator.',
         ),
         actions: [
           TextButton(
@@ -83,8 +94,28 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Staff')),
       body: StreamBuilder<List<StaffData>>(
-        stream: widget.staff,
+        key: ValueKey(_attempt),
+        stream: widget.staff(),
         builder: (context, snapshot) {
+          // An RLS rejection or a dropped connection leaves data null AND
+          // hasError true. Without this branch the screen spins forever with no
+          // message and no way out — the failure a manager on a poor network
+          // actually hits.
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Could not load staff. Please try again.'),
+                  const SizedBox(height: AppSpacing.md),
+                  TextButton(
+                    onPressed: () => setState(() => _attempt++),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
           final members = snapshot.data;
           if (members == null) {
             return const Center(child: CircularProgressIndicator());

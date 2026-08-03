@@ -21,15 +21,17 @@ void main() {
   Widget harness({
     required ResetStaffMfaFn onReset,
     String currentStaffId = 'me',
+    Stream<List<StaffData>> Function()? staff,
   }) =>
       ProviderScope(
         child: MaterialApp(
           theme: buildAmuwakTheme(),
           home: StaffListScreen(
-            staff: Stream.value([
-              _staff('me', 'Manager Me', 'manager'),
-              _staff('rider-1', 'Rider One', 'driver'),
-            ]),
+            staff: staff ??
+                () => Stream.value([
+                      _staff('me', 'Manager Me', 'manager'),
+                      _staff('rider-1', 'Rider One', 'driver'),
+                    ]),
             onReset: onReset,
             currentStaffId: currentStaffId,
           ),
@@ -105,5 +107,46 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Reset two-factor'), findsNothing);
+  });
+
+  testWidgets('explains a failed load instead of spinning forever',
+      (tester) async {
+    // An RLS rejection or a dropped connection errors the stream. Without an
+    // error branch the screen shows a spinner indefinitely, which is the
+    // failure a manager on a poor network actually hits.
+    await tester.pumpWidget(harness(
+      onReset: ({required staffId}) async => 0,
+      staff: () => Stream<List<StaffData>>.error(Exception('no connection')),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not load staff'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('retry re-subscribes rather than reusing the failed stream',
+      (tester) async {
+    // A bare Stream cannot be re-listened to once it has errored, so the screen
+    // takes a factory. If it took a Stream, this test would throw "Stream has
+    // already been listened to" on the retry tap.
+    var subscriptions = 0;
+    await tester.pumpWidget(harness(
+      onReset: ({required staffId}) async => 0,
+      staff: () {
+        subscriptions++;
+        return subscriptions == 1
+            ? Stream<List<StaffData>>.error(Exception('no connection'))
+            : Stream.value([_staff('rider-1', 'Rider One', 'driver')]);
+      },
+    ));
+    await tester.pumpAndSettle();
+    expect(subscriptions, 1);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(subscriptions, 2);
+    expect(find.text('Rider One'), findsOneWidget);
   });
 }

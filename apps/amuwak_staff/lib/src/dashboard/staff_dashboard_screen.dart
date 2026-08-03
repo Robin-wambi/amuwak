@@ -497,7 +497,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => StaffListScreen(
-          staff: staffRepo.watchAll(),
+          staff: staffRepo.watchAll,
           onReset: resetService.reset,
           currentStaffId: myId,
         ),
