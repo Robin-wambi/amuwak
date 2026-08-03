@@ -10,6 +10,12 @@
 -- after its own statement. Nor can app code, which any direct PostgREST call
 -- bypasses.
 
+-- WARNING for anyone touching auth_staff_role(): 0039 once mapped drivers to
+-- 'manager' and 0040 reverted it. staff_manager_write (0007) is the ONLY thing
+-- stopping a driver from editing staff rows, and it is that one function body.
+-- Reinstating 0039's CASE would silently make the staff table driver-writable,
+-- with nothing behind it.
+
 -- The single definition of "active manager", shared by the trigger below and
 -- the audit policy in 0055.
 --

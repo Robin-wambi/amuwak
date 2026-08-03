@@ -1283,7 +1283,7 @@ EOF
 - [ ] `supabase test db` — 0054 (8) and 0055 (4) pass. `0015_powersync` fails 15/15 for pre-existing reasons; judge per-file, not by exit code.
 - [ ] `flutter analyze` in `apps/amuwak_staff` and `packages/amuwak_core` — `No issues found!`
 - [ ] `flutter test --timeout=none` in `apps/amuwak_staff` — full suite green (877 before this plan).
-- [ ] **`supabase db push`** — apply 0054, 0055 and 0056 to production.
+- [ ] **`supabase db push`** — apply 0054 and 0055 to production.
 - [ ] `supabase functions deploy reset-staff-mfa`, then work Task 3 Step 3's seven manual checks against the real project.
 - [ ] Confirm a second active manager exists in production before enforcing `aal2`.
 
@@ -1300,6 +1300,6 @@ exactly the invisibility 0055 was added to prevent. If the app merges first,
 managers simply get an error when they tap through, which is recoverable and
 obvious.
 
-Migration 0056 must land with the others: without it any driver can promote
-themselves to manager and clear anyone's second factor, which defeats the
-function's manager check entirely.
+(An earlier draft added a third migration, 0056, here. It was written against a
+premise that turned out to be false and closed no live hole — see the correction
+at the top of this plan — so it was dropped. Only 0054 and 0055 ship.)
