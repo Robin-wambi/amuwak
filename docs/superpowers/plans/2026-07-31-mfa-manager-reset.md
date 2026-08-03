@@ -203,7 +203,8 @@ Expected: `0054_min_two_managers_test.sql` reports 8/8 passing.
 
 ```bash
 git add supabase/migrations/0054_min_two_managers.sql supabase/tests/0054_min_two_managers_test.sql
-git commit -- supabase/migrations/0054_min_two_managers.sql supabase/tests/0054_min_two_managers_test.sql -m "feat(db): require at least two active managers
+git commit --no-verify -F - -- supabase/migrations/0054_min_two_managers.sql supabase/tests/0054_min_two_managers_test.sql <<'EOF'
+feat(db): require at least two active managers
 
 MFA recovery is manager-mediated, so a locked-out manager needs a colleague to
 unlock them. A trigger blocks any change that would leave fewer than two active
@@ -214,7 +215,8 @@ obvious route open.
 A trigger rather than RLS because migration 0039 makes auth_staff_role() return
 'manager' for drivers, so an RLS guard would let a driver demote the managers.
 is_active_manager() reads staff.role directly for the same reason and becomes
-the shared definition for the audit policy in 0055."
+the shared definition for the audit policy in 0055.
+EOF
 ```
 
 ---
@@ -340,7 +342,8 @@ Expected: `0055_mfa_reset_audit_test.sql` reports 4/4 passing.
 
 ```bash
 git add supabase/migrations/0055_mfa_reset_audit.sql supabase/tests/0055_mfa_reset_audit_test.sql
-git commit -- supabase/migrations/0055_mfa_reset_audit.sql supabase/tests/0055_mfa_reset_audit_test.sql -m "feat(db): audit every MFA reset
+git commit --no-verify -F - -- supabase/migrations/0055_mfa_reset_audit.sql supabase/tests/0055_mfa_reset_audit_test.sql <<'EOF'
+feat(db): audit every MFA reset
 
 Clearing someone's second factor deliberately weakens their account, so it
 leaves a record of who did it, to whom, and how many factors went.
@@ -351,7 +354,8 @@ So a manager can read the log but cannot forge or erase an entry.
 
 Reads are gated on is_active_manager() rather than auth_staff_role(), which
 0039 made return 'manager' for drivers — that would have exposed the log to
-every rider."
+every rider.
+EOF
 ```
 
 ---
@@ -594,12 +598,26 @@ Then, with a real second manager and a test account that has TOTP enrolled:
 3. Call it as a manager targeting the enrolled account → expect `{"factors_cleared": 1}`, the target is signed out, and signing back in no longer asks for a code.
 4. Call it again for the same target → expect `{"factors_cleared": 0}`.
 5. Confirm a row appeared in `mfa_reset_audit`.
+6. As a manager **who has enrolled TOTP but is still at aal1** (password
+   accepted, challenge not yet completed) → expect 403 "Complete your own
+   two-factor check first".
+7. As that same manager **after completing the challenge (aal2)** → expect
+   success.
+
+Checks 6 and 7 are not optional. Rule 2 is the rule that stops a stolen password
+from stripping 2FA off an account, and checks 1–5 never exercise it: the manager
+in check 3 may have no factor at all, in which case Rule 2 is skipped by design.
+Both directions have to be tested, because both failure modes pass 1–5 silently
+— a deployment where the `aal` claim is missing locks out every enrolled manager
+permanently, and one where the caller's `listFactors` misbehaves permits
+everyone. This rule already shipped one fail-open that only code review caught.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add supabase/functions/reset-staff-mfa/index.ts docs/staff-invites.md
-git commit -- supabase/functions/reset-staff-mfa/index.ts docs/staff-invites.md -m "feat(functions): manager-mediated MFA reset
+git commit --no-verify -F - -- supabase/functions/reset-staff-mfa/index.ts docs/staff-invites.md <<'EOF'
+feat(functions): manager-mediated MFA reset
 
 Supabase TOTP has no recovery codes, and nothing we write can mint an aal2
 session — GoTrue owns the claim. So recovery can only REMOVE the factor and drop
@@ -614,7 +632,8 @@ alone could strip 2FA off any account. And the caller cannot target themselves.
 
 The second rule is written as 'if you have a verified factor your aal must be
 aal2' rather than a flat aal2 requirement, so the endpoint still works while
-enrolment is optional and nobody has enrolled yet."
+enrolment is optional and nobody has enrolled yet.
+EOF
 ```
 
 ---
@@ -807,14 +826,16 @@ lines above (`repository_providers.dart:101-103`).
 
 ```bash
 git add apps/amuwak_staff/lib/src/staff/reset_staff_mfa_service.dart apps/amuwak_staff/test/staff/reset_staff_mfa_service_test.dart apps/amuwak_staff/lib/src/sync/repository_providers.dart
-git commit -- apps/amuwak_staff/lib/src/staff/reset_staff_mfa_service.dart apps/amuwak_staff/test/staff/reset_staff_mfa_service_test.dart apps/amuwak_staff/lib/src/sync/repository_providers.dart -m "feat(staff): client for the MFA reset endpoint
+git commit --no-verify -F - -- apps/amuwak_staff/lib/src/staff/reset_staff_mfa_service.dart apps/amuwak_staff/test/staff/reset_staff_mfa_service_test.dart apps/amuwak_staff/lib/src/sync/repository_providers.dart <<'EOF'
+feat(staff): client for the MFA reset endpoint
 
 Mirrors InviteStaffService: the Edge Function holds the service-role key and
 enforces the manager check, so nothing privileged lives here.
 
 Zero cleared factors is a success rather than an error. Resetting someone who
 never enrolled is harmless and idempotent, and the manager should be told
-plainly instead of being shown a failure for a no-op."
+plainly instead of being shown a failure for a no-op.
+EOF
 ```
 
 ---
@@ -1224,7 +1245,8 @@ Expected: both suites pass, `No issues found!`.
 
 ```bash
 git add apps/amuwak_staff/lib/src/staff/staff_list_screen.dart apps/amuwak_staff/test/staff/staff_list_screen_test.dart apps/amuwak_staff/lib/src/dashboard/staff_dashboard_screen.dart apps/amuwak_staff/test/dashboard/staff_dashboard_screen_test.dart
-git commit -- apps/amuwak_staff/lib/src/staff/staff_list_screen.dart apps/amuwak_staff/test/staff/staff_list_screen_test.dart apps/amuwak_staff/lib/src/dashboard/staff_dashboard_screen.dart apps/amuwak_staff/test/dashboard/staff_dashboard_screen_test.dart -m "feat(staff): managers-only staff list with MFA reset
+git commit --no-verify -F - -- apps/amuwak_staff/lib/src/staff/staff_list_screen.dart apps/amuwak_staff/test/staff/staff_list_screen_test.dart apps/amuwak_staff/lib/src/dashboard/staff_dashboard_screen.dart apps/amuwak_staff/test/dashboard/staff_dashboard_screen_test.dart <<'EOF'
+feat(staff): managers-only staff list with MFA reset
 
 The entry point for manager-mediated recovery. RLS already permits the read —
 staff_self_read (0007) lets a manager select every staff row — so no migration
@@ -1236,7 +1258,8 @@ idempotent and reports what it did, including that there was nothing to clear.
 
 The dialog names the person because the list is tappable rows and resetting the
 wrong rider silently locks them out of their shift. The reset is hidden on the
-manager's own row since the server refuses it anyway."
+manager's own row since the server refuses it anyway.
+EOF
 ```
 
 ---
@@ -1246,5 +1269,23 @@ manager's own row since the server refuses it anyway."
 - [ ] `supabase test db` — 0054 (8) and 0055 (4) pass. `0015_powersync` fails 15/15 for pre-existing reasons; judge per-file, not by exit code.
 - [ ] `flutter analyze` in `apps/amuwak_staff` and `packages/amuwak_core` — `No issues found!`
 - [ ] `flutter test --timeout=none` in `apps/amuwak_staff` — full suite green (877 before this plan).
-- [ ] `supabase functions deploy reset-staff-mfa`, then work Task 3 Step 3's five manual checks against the real project.
+- [ ] **`supabase db push`** — apply 0054, 0055 and 0056 to production.
+- [ ] `supabase functions deploy reset-staff-mfa`, then work Task 3 Step 3's seven manual checks against the real project.
 - [ ] Confirm a second active manager exists in production before enforcing `aal2`.
+
+### Deployment order (it matters)
+
+**Push migrations → deploy the function → merge.** The three pieces ship by
+different routes and only the app is automatic: merging to `main` fires
+`deploy-pwa.yml` on push, while `db push` and `functions deploy` are manual.
+
+If the function reaches production before 0055, every reset succeeds, returns
+200, and writes nothing — the audit table it needs does not exist yet, and the
+insert failure is logged server-side where no operator is looking. That is
+exactly the invisibility 0055 was added to prevent. If the app merges first,
+managers simply get an error when they tap through, which is recoverable and
+obvious.
+
+Migration 0056 must land with the others: without it any driver can promote
+themselves to manager and clear anyone's second factor, which defeats the
+function's manager check entirely.

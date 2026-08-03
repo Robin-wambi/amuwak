@@ -53,7 +53,7 @@ a privileged action behind a server-side role check.
 5. `admin.mfa.listFactors({userId})`, then `admin.mfa.deleteFactor` for each
    verified factor.
 6. Insert an audit row.
-7. Return `{ factorsCleared: n }`.
+7. Return `{ factors_cleared: n }`.
 
 ### Authorisation rules
 
@@ -119,11 +119,14 @@ snackbar reporting the outcome.
 
 ## Error handling
 
-- Non-manager caller, or caller owing a challenge, or self-target → 403 with a
-  generic message; the app shows "You cannot do that" rather than echoing which
-  rule failed.
+- Non-manager caller, or caller owing a challenge, or self-target → 403. As
+  built, each returns its own message and the app shows it verbatim, because
+  "Complete your own two-factor check first" is actionable and "You cannot do
+  that" is not. This leaks nothing: all three describe only the CALLER's own
+  state, and all three sit ahead of any response that could reveal whether the
+  target exists.
 - Unknown target → 404.
-- Target has no verified factor → success with `factorsCleared: 0`, surfaced as
+- Target has no verified factor → success with `factors_cleared: 0`, surfaced as
   "X had no two-factor set up".
 - Trigger rejection on the two-manager rule → **no in-app path reaches this
   yet.** Role changes are out of scope (see below), so the only ways to hit the

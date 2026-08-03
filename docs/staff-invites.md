@@ -97,11 +97,39 @@ factor. Avoid this situation by keeping a second manager. Note the database will
 refuse to demote, deactivate or delete a manager that would leave fewer than
 two — promote a replacement first.
 
-**Deploying the function:**
+Note the in-app way to add a manager is to **invite** one with the `manager`
+role — role changes are not editable from the app.
+
+A manager who has set up their own authenticator must complete their own
+two-factor check before they can clear anyone else's; if they have not, they
+will see "Complete your own two-factor check first". That is deliberate: it is
+what stops someone holding only a stolen password from switching off two-factor
+across the team.
+
+**Deploying, in this order:**
 
 ```bash
+supabase db push                              # 0054, 0055, 0056
 supabase functions deploy reset-staff-mfa
+# then merge — the staff app auto-deploys on push to main
 ```
+
+Order matters. If the function goes out before the migrations, every reset
+still returns success but writes no audit row, because `mfa_reset_audit` does
+not exist yet — the failure is logged server-side where nobody is watching. And
+without 0056 any driver can promote themselves to manager, which defeats the
+function's manager check completely.
 
 No extra secrets: it uses the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
 that Supabase injects automatically.
+
+**Reading the audit log.** Every reset is recorded. Managers can query it:
+
+```sql
+select a.created_at, actor.display_name as cleared_by,
+       target.display_name as cleared_for, a.factors_cleared
+  from mfa_reset_audit a
+  join staff actor  on actor.id  = a.actor_staff_id
+  join staff target on target.id = a.target_staff_id
+ order by a.created_at desc;
+```
