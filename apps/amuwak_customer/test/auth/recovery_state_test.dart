@@ -7,11 +7,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Stands in for the auth stream so a test can drive one event at a time.
 final _event = StateProvider<AuthChangeEvent?>((ref) => null);
 
-ProviderContainer _containerAt(AuthChangeEvent? initial) {
+ProviderContainer _containerAt(
+  AuthChangeEvent? initial, {
+  RecoveryIntentStore? store,
+}) {
   final container = ProviderContainer(
     overrides: [
       _event.overrideWith((ref) => initial),
       currentAuthEventProvider.overrideWith((ref) => ref.watch(_event)),
+      if (store != null) recoveryIntentStoreProvider.overrideWithValue(store),
     ],
   );
   addTearDown(container.dispose);
@@ -53,6 +57,88 @@ void main() {
       final container = _containerAt(AuthChangeEvent.passwordRecovery);
       container.read(_event.notifier).state = AuthChangeEvent.signedOut;
       expect(container.read(recoveringProvider), isFalse);
+    });
+
+    test('survives a page reload mid-reset', () {
+      // The Supabase session persists to localStorage, but `passwordRecovery`
+      // does not fire twice: a reload restores the session and raises
+      // `initialSession` instead. Without a persisted intent the flag would
+      // reseed false and the router would wave the user into the app with
+      // their old password still live.
+      final store = InMemoryRecoveryIntentStore();
+      final first = _containerAt(AuthChangeEvent.passwordRecovery,
+          store: store);
+      expect(first.read(recoveringProvider), isTrue);
+
+      final reloaded =
+          _containerAt(AuthChangeEvent.initialSession, store: store);
+      expect(reloaded.read(recoveringProvider), isTrue);
+    });
+
+    test('does not resurrect a finished reset on the next reload', () {
+      // Signing out is how a completed reset ends, so it has to clear the
+      // persisted intent too — otherwise every later visit would demand a new
+      // password.
+      final store = InMemoryRecoveryIntentStore();
+      final first = _containerAt(AuthChangeEvent.passwordRecovery,
+          store: store);
+      first.read(_event.notifier).state = AuthChangeEvent.signedOut;
+      expect(first.read(recoveringProvider), isFalse);
+
+      final reloaded =
+          _containerAt(AuthChangeEvent.initialSession, store: store);
+      expect(reloaded.read(recoveringProvider), isFalse);
+    });
+  });
+
+  group('recoveryLinkFailedProvider', () {
+    /// GoTrue pushes a failed `?code=` exchange onto the auth stream as an
+    /// error and never establishes a session, which is the only trace the app
+    /// gets of a recovery link that could not be opened.
+    Future<ProviderContainer> containerWith({
+      required String url,
+      required bool exchangeFailed,
+    }) async {
+      final container = ProviderContainer(
+        overrides: [
+          launchUriProvider.overrideWithValue(Uri.parse(url)),
+          authStateProvider.overrideWith(
+            (ref) => exchangeFailed
+                ? Stream<AuthState>.error(const AuthException(
+                    'Code verifier could not be found in local storage.'))
+                : Stream<AuthState>.value(
+                    AuthState(AuthChangeEvent.initialSession, null)),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container
+          .read(authStateProvider.future)
+          .then((_) {}, onError: (_) {});
+      return container;
+    }
+
+    test('is true when a link arrived and its code could not be exchanged',
+        () async {
+      final container = await containerWith(
+          url: 'https://amuwak-customer.pages.dev/?code=abc123',
+          exchangeFailed: true);
+      expect(container.read(recoveryLinkFailedProvider), isTrue);
+    });
+
+    test('is false for an auth error with no link involved', () async {
+      // A failed sign-in errors the same stream. Only a URL carrying a
+      // one-time code means a recovery link is what went wrong.
+      final container = await containerWith(
+          url: 'https://amuwak-customer.pages.dev/', exchangeFailed: true);
+      expect(container.read(recoveryLinkFailedProvider), isFalse);
+    });
+
+    test('is false when the link exchanged cleanly', () async {
+      final container = await containerWith(
+          url: 'https://amuwak-customer.pages.dev/?code=abc123',
+          exchangeFailed: false);
+      expect(container.read(recoveryLinkFailedProvider), isFalse);
     });
   });
 }
