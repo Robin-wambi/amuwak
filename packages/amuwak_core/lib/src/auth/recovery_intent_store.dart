@@ -1,4 +1,12 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Where the sticky recovery flag lives so it outlives a page reload.
+///
+/// Both apps override this in `main.dart` with the persistent implementation;
+/// the default forgets, which is only correct where a reload cannot happen.
+final recoveryIntentStoreProvider =
+    Provider<RecoveryIntentStore>((ref) => InMemoryRecoveryIntentStore());
 
 /// Remembers, across a page reload, that the user is part-way through a
 /// password reset.
@@ -8,10 +16,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// persists to localStorage. What does NOT survive is the `passwordRecovery`
 /// event — supabase_flutter raises `initialSession` when it restores a stored
 /// session, so anything derived from the last-seen auth event reseeds to
-/// "not recovering" and the router waves the user into the app with their old
-/// password still live.
+/// "not recovering" and both apps' gates hand the user straight on with their
+/// old password still live.
 ///
-/// Read synchronously, because the router's redirect is synchronous.
+/// Read synchronously, because the customer router's redirect and the staff
+/// [AuthGate]'s `initState` both are.
 abstract class RecoveryIntentStore {
   bool get isPending;
   void markPending();

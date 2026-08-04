@@ -2,15 +2,6 @@ import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'recovery_intent_store.dart';
-
-export 'recovery_intent_store.dart';
-
-/// Where the sticky recovery flag is kept so it outlives a page reload.
-/// Overridden in `main.dart` with the persistent implementation.
-final recoveryIntentStoreProvider =
-    Provider<RecoveryIntentStore>((ref) => InMemoryRecoveryIntentStore());
-
 /// Whether the user is part-way through a password recovery.
 ///
 /// Sticky on purpose. A `passwordRecovery` event latches this on and only

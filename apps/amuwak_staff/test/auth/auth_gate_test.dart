@@ -221,6 +221,56 @@ void main() {
     expect(find.byType(SetPasswordScreen), findsNothing);
   });
 
+  testWidgets('a reload mid-reset still lands on SetPassword', (tester) async {
+    // Reopening the PWA restores the persisted Supabase session and raises
+    // initialSession — passwordRecovery does not fire a second time. Seeding
+    // only from the event would drop a rider who reloaded mid-reset straight
+    // onto the dashboard with their old password still live.
+    final store = InMemoryRecoveryIntentStore()..markPending();
+
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u1'),
+      currentAuthEventProvider
+          .overrideWithValue(AuthChangeEvent.initialSession),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      recoveryIntentStoreProvider.overrideWithValue(store),
+      ..._dashboardStubs(),
+    ]);
+
+    expect(find.byType(SetPasswordScreen), findsOneWidget);
+    expect(find.byType(StaffDashboardScreen), findsNothing);
+  });
+
+  testWidgets('a finished reset is not demanded again after a reload',
+      (tester) async {
+    // Signing out ends a reset, so it has to clear the persisted intent —
+    // otherwise every later launch would ask for a new password.
+    final store = InMemoryRecoveryIntentStore();
+    final container = ProviderContainer(overrides: [
+      currentUserIdProvider.overrideWith((ref) => ref.watch(_testUserIdProvider)),
+      currentAuthEventProvider.overrideWith((ref) => ref.watch(_testEventProvider)),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      recoveryIntentStoreProvider.overrideWithValue(store),
+      ..._dashboardStubs(),
+    ]);
+    addTearDown(container.dispose);
+    container.read(_testEventProvider.notifier).state =
+        AuthChangeEvent.passwordRecovery;
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: AuthGate()),
+    ));
+    expect(store.isPending, isTrue);
+
+    container.read(_testEventProvider.notifier).state =
+        AuthChangeEvent.signedOut;
+    container.read(_testUserIdProvider.notifier).state = null;
+    await tester.pump();
+
+    expect(store.isPending, isFalse);
+  });
+
   testWidgets('routes back to LoginScreen when the session ends (sign-out)',
       (tester) async {
     final container = ProviderContainer(overrides: [

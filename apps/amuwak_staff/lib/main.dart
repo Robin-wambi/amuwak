@@ -14,7 +14,13 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   runApp(
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        // The default store forgets on relaunch, which would let a rider skip
+        // a forced password reset by reopening the app.
+        recoveryIntentStoreProvider
+            .overrideWithValue(PersistentRecoveryIntentStore(prefs)),
+      ],
       child: const AmuwakStaffApp(),
     ),
   );

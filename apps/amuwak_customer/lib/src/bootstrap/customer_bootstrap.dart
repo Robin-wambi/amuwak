@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/recovery_intent_store.dart';
 import 'timeout_http_client.dart';
 
 /// Boots the customer app: validates config and initialises Supabase with a

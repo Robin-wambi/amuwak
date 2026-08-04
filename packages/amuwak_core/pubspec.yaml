@@ -13,6 +13,9 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^2.5.0
   supabase_flutter: ^2.5.0
+  # Backs RecoveryIntentStore (localStorage on web) so a half-finished password
+  # reset survives a reload in both apps.
+  shared_preferences: ^2.2.0
   uuid: ^4.5.0
   meta: ^1.15.0
 
