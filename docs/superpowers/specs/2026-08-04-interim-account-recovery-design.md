@@ -138,6 +138,17 @@ screens that #104 and #107 hardened, reload-proofing included.
 No new screens for the password change itself. Only the staff-side issuing UI
 is new.
 
+**How the apps read the flag.** Both gates are synchronous and run before any
+data is fetched, so the flag travels as a **claim on the access token**, minted
+by the existing `custom_access_token_hook` alongside `user_role` (migration
+0009/0025/0043). Not a table read: the customer gate has no session-scoped
+query at that point, and the staff app's Drift copy of `staff` is empty on a
+first sign-in — exactly the case this has to handle.
+
+The claim clears naturally. Completing a set-password signs the user out, so
+the next sign-in mints a fresh token without it. That is the same mechanism
+that already ends recovery, and it means no cache to invalidate.
+
 ### Permissions
 
 A service-role function that can set any password is the most dangerous thing
@@ -156,6 +167,11 @@ in the codebase.
   without this a stolen password alone is enough.
 - Every issuance writes an insert-only audit row: actor, target, kind,
   timestamp.
+- **Rate limited per caller.** An endpoint that can set any password, with no
+  ceiling, is worth stealing a session for. The audit table is the natural
+  place to enforce it — reject when the caller has issued more than a small
+  number in the last hour — which also means the abuse and the limit share one
+  source of truth.
 
 ### Schema
 
