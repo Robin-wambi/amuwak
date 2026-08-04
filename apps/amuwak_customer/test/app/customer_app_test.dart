@@ -27,6 +27,7 @@ void main() {
   Widget app({
     required String? userId,
     bool recovering = false,
+    bool recoveryLinkFailed = false,
     String? role,
   }) =>
       ProviderScope(
@@ -36,6 +37,7 @@ void main() {
           currentUserIdProvider.overrideWithValue(userId),
           currentRoleProvider.overrideWithValue(role),
           recoveringProvider.overrideWith(() => _TestRecovering(recovering)),
+          recoveryLinkFailedProvider.overrideWithValue(recoveryLinkFailed),
           // The signed-in route reaches the shell's SyncBanner — keep it off a
           // real Drift DB / connectivity_plus (and any pending stream timer).
           onlineProvider.overrideWith((ref) => Stream.value(true)),
@@ -77,6 +79,18 @@ void main() {
 
     expect(find.text('Set a new password'), findsOneWidget);
     expect(find.text('Wash & Iron'), findsNothing);
+  });
+
+  testWidgets('a recovery link that produced no session explains itself',
+      (tester) async {
+    // The failure looks identical to an ordinary signed-out visit, so without
+    // the router consulting it the user lands on /login and is left to request
+    // more links that cannot work either.
+    await tester.pumpWidget(app(userId: null, recoveryLinkFailed: true));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('same browser'), findsOneWidget);
+    expect(find.text('Welcome back'), findsNothing);
   });
 
   testWidgets('ending recovery re-routes without any other auth event',

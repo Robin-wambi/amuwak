@@ -222,6 +222,60 @@ void main() {
       });
     });
 
+    group('a recovery link that could not be exchanged', () {
+      // PKCE keeps the code verifier in the localStorage of the browser that
+      // asked for the reset, so a link opened on another device never
+      // establishes a session. Bouncing to /login would tell the user nothing
+      // and they would keep requesting links that cannot work.
+      test('is explained rather than silently bounced to /login', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: false, recoveryLinkFailed: true, location: '/'),
+          kRecoveryLinkFailedRoute,
+        );
+      });
+
+      test('and is left there rather than looping', () {
+        expect(
+          customerAuthRedirect(
+              signedIn: false,
+              recoveryLinkFailed: true,
+              location: kRecoveryLinkFailedRoute),
+          isNull,
+        );
+      });
+
+      test('does not trap the user on the notice', () {
+        // The notice's whole purpose is to send them to ask for a fresh link,
+        // so the auth pages have to stay reachable from it.
+        expect(
+          customerAuthRedirect(
+              signedIn: false,
+              recoveryLinkFailed: true,
+              location: kForgotPasswordRoute),
+          isNull,
+        );
+        expect(
+          customerAuthRedirect(
+              signedIn: false, recoveryLinkFailed: true, location: '/login'),
+          isNull,
+        );
+      });
+
+      test('is irrelevant once a session exists', () {
+        // A stale ?code= in the address bar must not follow someone who has
+        // since signed in normally.
+        expect(
+          customerAuthRedirect(
+              signedIn: true,
+              role: 'customer',
+              recoveryLinkFailed: true,
+              location: '/'),
+          isNull,
+        );
+      });
+    });
+
     group('a null role (token missing or mid-refresh, not a verdict)', () {
       // The hook always mints one of staff/customer/none, so null means the
       // token is absent or expired — not that the account is unlinked. Bouncing

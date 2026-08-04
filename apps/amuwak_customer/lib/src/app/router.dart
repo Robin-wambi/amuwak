@@ -7,6 +7,7 @@ import '../account/profile_screen.dart';
 import '../auth/complete_profile_screen.dart';
 import '../auth/forgot_password_screen.dart';
 import '../auth/login_screen.dart';
+import '../auth/recovery_link_failed_screen.dart';
 import '../auth/recovery_state.dart';
 import '../auth/reset_password_screen.dart';
 import '../auth/signup_screen.dart';
@@ -37,6 +38,11 @@ const kForgotPasswordRoute = '/forgot-password';
 /// that state. Naming the route in `redirectTo` would put a query string after
 /// the URL fragment, because this app runs Flutter web's default hash strategy.
 const kResetPasswordRoute = '/reset-password';
+
+/// Where a recovery link that could not be opened explains itself. Not
+/// `/link-expired`: the link is usually fine, it is just being opened somewhere
+/// that cannot complete it, and the screen is careful not to claim otherwise.
+const kRecoveryLinkFailedRoute = '/recovery-link-error';
 
 /// The staff roles the access-token hook can mint (Supabase migration 0043).
 /// Staff wins over customer in that hook, so a person who is both reads as
@@ -70,16 +76,28 @@ const _staffRoles = {'driver', 'in_shop', 'manager'};
 /// a new password. It deliberately outranks both interstitials — a stranded
 /// account sets its password first, then finishes setup. It does NOT outrank
 /// being signed out: with no session there is nothing to update against.
+///
+/// [recoveryLinkFailed] is the opposite corner: a link arrived and produced no
+/// session at all, so it is only ever consulted while signed out. Left alone
+/// it would look like an ordinary visit and drop the user on `/login` with
+/// nothing to explain why the emailed link did nothing.
 String? customerAuthRedirect({
   required bool signedIn,
   required String location,
   String? role,
   bool recovering = false,
+  bool recoveryLinkFailed = false,
 }) {
   final onAuthPage = location == '/login' ||
       location == '/signup' ||
-      location == kForgotPasswordRoute;
-  if (!signedIn) return onAuthPage ? null : '/login';
+      location == kForgotPasswordRoute ||
+      location == kRecoveryLinkFailedRoute;
+  if (!signedIn) {
+    // Only from outside the auth pages, so the notice can hand the user on to
+    // request another link instead of bouncing them back to itself.
+    if (recoveryLinkFailed && !onAuthPage) return kRecoveryLinkFailedRoute;
+    return onAuthPage ? null : '/login';
+  }
 
   if (recovering) {
     return location == kResetPasswordRoute ? null : kResetPasswordRoute;
@@ -124,6 +142,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       signedIn: ref.read(currentUserIdProvider) != null,
       role: ref.read(currentRoleProvider),
       recovering: ref.read(recoveringProvider),
+      recoveryLinkFailed: ref.read(recoveryLinkFailedProvider),
       location: state.matchedLocation,
     ),
     routes: [
@@ -141,6 +160,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: kResetPasswordRoute,
           builder: (_, __) => const ResetPasswordScreen()),
+      GoRoute(
+          path: kRecoveryLinkFailedRoute,
+          builder: (_, __) => const RecoveryLinkFailedScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ShellScaffold(navigationShell: navigationShell),
