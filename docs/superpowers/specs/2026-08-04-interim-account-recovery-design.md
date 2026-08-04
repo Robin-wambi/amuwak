@@ -36,11 +36,20 @@ nothing explaining why.
 On the staff PWA a second problem stacks on it: `#access_token=` collides with
 the app's hash-strategy routes.
 
-**This is a theory, not a finding.** It rests on supabase-js's default flow
-type. It is cheap to confirm and MUST be confirmed by walk 3 below before
-anything is built on it. If confirmed, the fix already exists: the `token_hash`
-path in #108 is neither PKCE nor implicit, so applying it to `invite-staff`
-resolves the mismatch.
+**Decision (2026-08-04): fix it on the reasoning, do not wait for a
+reproduction.** The fix is free, so the cost of being wrong about the diagnosis
+is zero.
+
+`invite-staff` needs **no code change**. It keeps calling
+`resetPasswordForEmail`, so Supabase keeps sending and keeps using the recovery
+template — and flipping that template to a token hash removes the mismatch
+entirely, because `?token_hash=…&type=recovery` is neither PKCE nor implicit.
+`completeRecoveryLink` (#108) redeems it whatever the client flow is. The
+fragment/hash-route collision on the staff PWA goes with it, since nothing
+lands in the fragment any more.
+
+Walk 3 below still runs, but as confirmation that invites now work — not as a
+gate on building anything.
 
 ## Decisions
 
@@ -62,9 +71,14 @@ Taken with the user on 2026-08-04:
    switching it on the day a domain exists is a CI variable and a redeploy, not
    a code change and a review.
 
-Explicitly **not** in this design, all of it waiting on a domain: Postmark, the
-Send Email Hook, Supabase Pro, Turnstile, and flipping the recovery template to
-`token_hash` (#108 already carries that code).
+6. **Flip the recovery email template to `token_hash` now.** Corrects an error
+   in the first draft of this spec, which parked the flip alongside the rest of
+   Phase A. It does not belong there: the template is a dashboard setting, and
+   only the *sender* waits on DNS. Flipping it is also the entire fix for the
+   `invite-staff` mismatch above.
+
+Explicitly **not** in this design, all of it genuinely waiting on a domain:
+Postmark, the Send Email Hook, Supabase Pro, and Turnstile.
 
 ## Piece 1 — Interim honesty
 
@@ -104,12 +118,16 @@ against the hosted Supabase project.
    one. Establishes the baseline works at all.
 2. **Customer reset, second browser.** Expected: `/recovery-link-error`. A
    silent bounce to `/login` instead means #104's detection is wrong.
-3. **Staff invite.** Invite a rider to a second address. This carries the
-   flow-mismatch theory: a link that does nothing at all — no error, no screen,
-   no event — confirms it.
+3. **Staff invite.** Invite a rider to a second address, and confirm the link
+   now lands on the set-password screen. This is the walk that proves the
+   template flip fixed the mismatch.
+
+Walks 2 and 3 are only meaningful **after** the template flip, since both
+depend on the link shape. Walk 1 is worth running before and after: before, it
+establishes the PKCE path was working at all, which is what tells you a later
+failure came from the flip rather than from something that never worked.
 
 **Output:** a written list of what broke, appended to the auth-hardening plan.
-Nothing is built on the mismatch theory until walk 3 has been run.
 
 ## Piece 3 — Staff-issued temporary passwords
 
@@ -154,11 +172,18 @@ that already ends recovery, and it means no cache to invalidate.
 A service-role function that can set any password is the most dangerous thing
 in the codebase.
 
-- **Staff targets: managers only.** If a driver could issue a temporary
-  password for a manager, one stolen rider phone becomes full administrative
-  takeover. This is the rule that matters most.
-- **Customer targets: any active staff member.** Riders are the ones standing
-  in front of the customer.
+- **Managers only, for every target — staff and customer alike.** For staff
+  targets this is non-negotiable: if a driver could issue a temporary password
+  for a manager, one stolen rider phone becomes full administrative takeover.
+  For customer targets it is a deliberate tightening (decided 2026-08-04): a
+  rider issuing a customer password is account takeover of a third party, and
+  with no email the customer can never be told it happened.
+
+  The cost is real and should be planned for. A rider standing in front of a
+  locked-out customer cannot fix it themselves — they have to reach a manager,
+  who issues the password and passes it back. If that turns out to be too slow
+  in practice, the lever to reconsider is `in_shop` (present at the counter,
+  not administrative), not drivers.
 - **Manager resetting another manager: allowed.** Lateral, not escalation —
   both already hold full rights — and blocking it deadlocks the fleet when two
   managers are locked out.
@@ -198,9 +223,12 @@ A migration adding:
 
 With no email, a customer **cannot be told their password was reset**. That is
 exactly the notification OWASP asks for and Phase D was meant to deliver. A
-rogue or careless rider issuing themselves access to a customer account is
+rogue or careless manager issuing themselves access to a customer account is
 invisible to that customer; the audit trail is the only control, and it is
 after the fact.
+
+Restricting issuance to managers narrows who can do this, but does not change
+that nobody outside the audit table would ever know.
 
 This is a cost of deferring email, not something this design can engineer away.
 It is the strongest argument for revisiting the domain decision.
@@ -211,19 +239,29 @@ It is the strongest argument for revisiting the domain decision.
   else.
 - The Edge Function is the gap: the repo has no harness for Deno functions and
   `invite-staff` has none either. Its permission rules get a written manual
-  checklist, with **driver-cannot-reset-a-manager marked non-optional** —
+  checklist, with **non-manager-cannot-issue-anything marked non-optional** —
   exactly how #106 handled the same gap.
 
 ## Sequencing
 
-Pieces are independently mergeable, in this order:
-
-1. Piece 1 (flag) — no dependencies.
-2. Piece 2 (verification) — no code, needs dashboard access.
-3. Piece 3 (temporary passwords) — leans on #106's audit-table and
+1. **Merge the auth stack** — #104 → #107 → #108, retargeting as each lands.
+   The apps must be able to redeem a `token_hash` link *before* the template
+   emits one.
+2. **Flip the recovery template** (dashboard; mirror of
+   `supabase/templates/recovery.html`). This is the `invite-staff` fix.
+3. **Piece 2, the verification walks.** Walk 1 is worth running either side of
+   step 2; walks 2 and 3 only after it.
+4. **Piece 1, the flag.** No dependencies — it can move in parallel with all of
+   the above.
+5. **Piece 3, temporary passwords.** Leans on #106's audit-table and
    permission-check patterns, which live on the unmerged
-   `feat/mfa-manager-reset` branch. Either follow that branch in, or duplicate
+   `feat/mfa-manager-reset` branch: either follow that branch in, or duplicate
    its migration shape.
+
+Order within step 1 matters and is easy to get backwards. Flipping the template
+before the apps are deployed breaks the `?code=` links they *do* understand.
+That is a small risk today, since no email reaches a real user anyway, but it
+stops being small the moment a sender exists.
 
 Deploy order within piece 3, from #106's lesson: `supabase db push` (migration)
 → `functions deploy` → merge. The function before its audit table means every
