@@ -22,6 +22,15 @@ class AppBootstrap {
       anonKey: config.supabaseAnonKey,
       httpClient: TimeoutHttpClient(http.Client()),
     );
+    // Both apps share one auth project and therefore one recovery email
+    // template, so the token-hash link shape reaches staff too — without this
+    // a rider's reset link would land here and do nothing at all. Verifying
+    // raises `passwordRecovery`, which AuthGate seeds from; the event survives
+    // firing this early because GoTrue's auth stream replays its last value to
+    // a new subscriber.
+    //
+    // Inert for the invite/`?code=` links supabase_flutter already handles.
+    await completeRecoveryLink(uri: Uri.base, auth: AuthService());
     // The local Drift DB is opened lazily by the SyncOrchestrator (via
     // appDatabaseProvider) once a session is active — see main.dart's
     // syncLifecycleProvider — and the SyncPuller fills it from Supabase on

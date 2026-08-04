@@ -46,23 +46,31 @@ final passwordResetRedirectProvider = Provider<String?>((ref) {
 /// navigation only rewrites the fragment and leaves the query alone.
 final launchUriProvider = Provider<Uri>((ref) => Uri.base);
 
-/// Whether a recovery link arrived but its one-time `?code=` never became a
-/// session.
+/// What bootstrap made of the launch URL. Overridden in `main.dart`; the
+/// default covers tests and any path that never ran bootstrap.
+final recoveryLinkOutcomeProvider =
+    Provider<RecoveryLinkResult>((ref) => RecoveryLinkResult.none);
+
+/// Whether a recovery link arrived and never became a session.
 ///
-/// PKCE writes the code verifier to the localStorage of the browser that asked
-/// for the reset, so a link opened anywhere else — another device, or an email
-/// client's isolated in-app browser — cannot complete the exchange. GoTrue
-/// reports that as an error on the auth stream and no session is established,
-/// which on its own looks exactly like an ordinary signed-out visit: the user
-/// is dropped on /login and left to request more links that cannot work
-/// either.
+/// Two link shapes fail two different ways, and the user cannot tell either of
+/// them from an ordinary signed-out visit — they are dropped on /login with
+/// nothing to say the emailed link was the problem, and go on requesting more.
 ///
-/// Both halves matter. A failed sign-in errors the same stream, so the `?code=`
-/// is what says a recovery link is the thing that went wrong.
+/// `?token_hash=` is redeemed by [completeRecoveryLink] during bootstrap, so a
+/// rejection is a return value, not anything on the auth stream.
+///
+/// `?code=` is redeemed by supabase_flutter, which reports the failure as an
+/// error on the auth stream. Both halves of that test matter: a failed sign-in
+/// errors the same stream, so the `code` parameter is what says a recovery
+/// link is the thing that went wrong.
 final recoveryLinkFailedProvider = Provider<bool>((ref) {
-  final arrivedOnALink =
+  if (ref.watch(recoveryLinkOutcomeProvider) == RecoveryLinkResult.failed) {
+    return true;
+  }
+  final arrivedOnAPkceLink =
       ref.watch(launchUriProvider).queryParameters.containsKey('code');
-  return arrivedOnALink && ref.watch(authStateProvider).hasError;
+  return arrivedOnAPkceLink && ref.watch(authStateProvider).hasError;
 });
 
 class RecoveringNotifier extends Notifier<bool> {

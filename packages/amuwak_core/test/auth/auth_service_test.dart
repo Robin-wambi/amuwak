@@ -16,6 +16,7 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(UserAttributes());
+    registerFallbackValue(OtpType.recovery);
   });
 
   setUp(() {
@@ -189,6 +190,41 @@ void main() {
 
       verify(() => goTrue.resetPasswordForEmail('a@b.co', redirectTo: null))
           .called(1);
+    });
+  });
+
+  group('verifyRecoveryToken', () {
+    test('verifies the emailed token hash as a recovery', () async {
+      // No PKCE code verifier is involved, which is the entire point: the
+      // verifier lives in the localStorage of the browser that ASKED for the
+      // reset, so a link opened anywhere else cannot use it.
+      when(() => goTrue.verifyOTP(
+            type: any(named: 'type'),
+            tokenHash: any(named: 'tokenHash'),
+          )).thenAnswer((_) async => _FakeAuthResponse());
+
+      await service.verifyRecoveryToken('hash-from-the-email');
+
+      verify(() => goTrue.verifyOTP(
+            type: OtpType.recovery,
+            tokenHash: 'hash-from-the-email',
+          )).called(1);
+    });
+
+    test('wraps AuthException in AuthFailure', () async {
+      when(() => goTrue.verifyOTP(
+            type: any(named: 'type'),
+            tokenHash: any(named: 'tokenHash'),
+          )).thenThrow(const AuthException('Token has expired or is invalid'));
+
+      await expectLater(
+        service.verifyRecoveryToken('stale'),
+        throwsA(isA<AuthFailure>().having(
+          (e) => e.message,
+          'message',
+          'Token has expired or is invalid',
+        )),
+      );
     });
   });
 
