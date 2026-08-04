@@ -94,7 +94,16 @@ class AuthService {
 
   static String _normalizeEmail(String email) => email.trim().toLowerCase();
 
-  Future<void> signOut() => _goTrue.signOut();
+  /// End the session. GoTrue drops the local session and raises `signedOut`
+  /// before it calls the server, so a failure here means the revoke request
+  /// failed — the user is signed out locally either way.
+  Future<void> signOut() async {
+    try {
+      await _goTrue.signOut();
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    }
+  }
 
   Session? get currentSession => _goTrue.currentSession;
   User?    get currentUser    => _goTrue.currentUser;

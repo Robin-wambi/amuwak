@@ -191,4 +191,24 @@ void main() {
           .called(1);
     });
   });
+
+  group('signOut', () {
+    test('wraps AuthException in AuthFailure', () async {
+      // Every other method here presents failures as AuthFailure. signOut is
+      // now called from the reset flow, which has to tell a sign-out failure
+      // apart from a password-update failure, so it must not leak the raw
+      // AuthException.
+      when(() => goTrue.signOut())
+          .thenThrow(const AuthException('server rejected the sign-out'));
+
+      await expectLater(
+        service.signOut(),
+        throwsA(isA<AuthFailure>().having(
+          (e) => e.message,
+          'message',
+          'server rejected the sign-out',
+        )),
+      );
+    });
+  });
 }
