@@ -99,6 +99,8 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                     TextFormField(
                       controller: _confirm,
                       obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _busy ? null : _submit(),
                       decoration: const InputDecoration(
                           labelText: 'Confirm new password'),
                       // OWASP asks for the password twice: a typo here is

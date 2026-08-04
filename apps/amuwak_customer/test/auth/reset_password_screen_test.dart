@@ -79,6 +79,19 @@ void main() {
     ]);
   });
 
+  testWidgets('submits from the confirm field, like the staff screen does',
+      (tester) async {
+    stubHappyPath();
+    await tester.pumpWidget(_harness(auth));
+    await tester.pumpAndSettle();
+
+    await enterBoth(tester, 'correct horse battery', 'correct horse battery');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    verify(() => auth.updatePassword('correct horse battery')).called(1);
+  });
+
   testWidgets('keeps the form usable when the update fails', (tester) async {
     when(() => auth.updatePassword(any()))
         .thenThrow(AuthFailure('network unreachable'));
