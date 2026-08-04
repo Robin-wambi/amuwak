@@ -36,8 +36,18 @@ class PasswordResetController {
   /// Order matters: a failed update must NOT sign the user out. Doing so would
   /// destroy the recovery session and strand them with their old password and
   /// no way back except requesting another link.
+  ///
+  /// The reverse is not symmetrical, so a failing sign-out is swallowed. By
+  /// the time it can throw, GoTrue has already dropped the local session and
+  /// raised `signedOut` — only the server-side revoke failed. Surfacing that
+  /// would tell the user their new password did not take, sending them back to
+  /// a recovery link they have already spent.
   Future<void> setNewPassword(String password) async {
     await _auth.updatePassword(password);
-    await _auth.signOut();
+    try {
+      await _auth.signOut();
+    } on AuthFailure catch (_) {
+      // Already signed out locally; nothing the user can act on.
+    }
   }
 }

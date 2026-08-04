@@ -57,5 +57,20 @@ void main() {
       // with the old password and no way back except another emailed link.
       verifyNever(() => auth.signOut());
     });
+
+    test('a failed sign-out does not report the password as unchanged',
+        () async {
+      when(() => auth.updatePassword(any())).thenAnswer((_) async {});
+      when(() => auth.signOut()).thenThrow(AuthFailure('revoke failed'));
+
+      // The password really did change, so telling the user it did not would
+      // send them back to a link they have already spent. GoTrue drops the
+      // local session and raises `signedOut` before it calls the server, so
+      // the only thing lost here is the server-side revoke.
+      await expectLater(
+        controller.setNewPassword('correct horse battery'),
+        completes,
+      );
+    });
   });
 }
