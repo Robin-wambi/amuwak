@@ -46,9 +46,23 @@ These cannot be done from app code — an operator must run them:
 2. **Auth settings** (Authentication → Providers / URL config):
    - Enable email confirmations.
    - Set **Site URL** and add the web app origin to **Redirect URLs**.
-   - Review the **Reset password** email template — this is the email new
-     invitees receive (onboarding sends a recovery link), so word it as a
-     welcome / "set your password" message, not just a reset.
+   - The **Reset password** email template is the email new invitees receive
+     (onboarding sends a recovery link), so word it as a welcome / "set your
+     password" message, not just a reset.
+
+     **Its link must be a token hash, not `{{ .ConfirmationURL }}`:**
+
+         {{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery
+
+     Mirror `supabase/templates/recovery.html`. This is not cosmetic — the
+     default emits a link tied to the flow of whichever client requested it,
+     and `invite-staff` requests via supabase-js (implicit) while the apps run
+     PKCE. Mismatched, `supabase_flutter` ignores the link entirely: no
+     exchange, no error, no event, and the invitee lands on the login screen
+     with nothing explaining why. A token hash belongs to neither flow, so it
+     works for every client. On the staff PWA it also keeps the token out of
+     the URL fragment, which would otherwise collide with the app's hash
+     routes.
    - Raise the **recovery link / OTP expiry** (Authentication → Settings) to a
      window long enough for a new hire to act — recovery links default to a much
      shorter expiry than the old invite links.

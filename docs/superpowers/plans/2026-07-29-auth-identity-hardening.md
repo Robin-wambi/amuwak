@@ -40,20 +40,13 @@ key is public by design — it ships in the web bundle — and is not the concer
 
 ## Phase A — Platform configuration (no app code, owner: Robin)
 
-- **Supabase Pro** — required for Leaked Password Protection (HIBP); also brings
-  PITR and longer log retention.
-- Auth settings: minimum length **8**; leaked password protection **on**;
-  required character sets **off** (per NIST).
-- **Postmark**: verify the sending domain with SPF, DKIM and DMARC. Chosen over
-  Resend now that cost is not a constraint — 98%+ inbox placement, ~10s median
-  delivery, and it accepts only transactional mail, so shared-IP reputation
-  cannot be damaged by other tenants' marketing.
-- **Send Email Hook** → Postmark. Replaces Supabase's built-in sender, fires on
-  `recovery`, and gives real templates instead of the dashboard editor.
-- **Cloudflare Turnstile** on auth endpoints.
-- Redirect URLs: add `https://amuwak-customer.pages.dev/**`. Today's Site URL
-  targets the staff app (`docs/staff-invites.md:48`), so without this a customer
-  reset lands on the wrong application.
+Originally written as one blocking blob. It is not: **only the parts that put
+mail in a stranger's inbox need a domain.** Split accordingly on 2026-08-04,
+because the rest unblocks three broken flows for the price of a dashboard
+session.
+
+### A1 — Doable today, no domain required
+
 - **Recovery email must link with a token hash, not `{{ .ConfirmationURL }}`.**
   That default resolves to a PKCE `?code=`, which can only be exchanged against
   a verifier held in the localStorage of the browser that *requested* the reset
@@ -69,17 +62,92 @@ key is public by design — it ships in the web bundle — and is not the concer
   hardcoded origin — one template serves both apps and the Site URL can only
   name one of them.
 
-  App-side support ships ahead of this and is inert until the template changes,
-  so the two can land independently.
+  **This is also the fix for staff invites**, which are very likely broken
+  today and silently so. `invite-staff` sends via `resetPasswordForEmail` on a
+  supabase-js client that defaults to the *implicit* flow, while both Flutter
+  apps run *PKCE*; `supabase_flutter`'s `_isAuthCallbackDeeplink` accepts an
+  `access_token` fragment only for an implicit client, so the link is ignored
+  outright — no exchange, no error, no event. A token hash is neither flow, so
+  the mismatch has nothing left to mismatch, and the fragment/hash-route
+  collision on the staff PWA goes with it. `invite-staff` needs **no code
+  change**.
 
-  One asymmetry to keep in mind when the redirect URLs above are added: the
-  customer PWA passes its own origin, but the staff app passes none and leans
-  on the Site URL naming it. That is deliberate — staff is served from a Pages
-  sub-path (`/amuwak/`) that a bare origin would drop — but it means moving the
-  Site URL to the customer app silently breaks riders' reset links, and staff
-  would have to start passing an explicit origin-plus-base-path first.
-- Verify in dashboard: recovery-link expiry, and whether password change revokes
-  other sessions.
+  **Ordering trap:** merge and deploy the app-side support (#104 → #107 →
+  #108) *before* flipping the template. Backwards breaks the `?code=` links the
+  deployed apps do understand. Low stakes while no mail reaches anyone; not low
+  the moment a sender exists.
+- Redirect URLs: add `https://amuwak-customer.pages.dev/**`, and
+  `http://localhost:*` for the verification walks. Today's Site URL targets the
+  staff app (`docs/staff-invites.md:48`), so without this a customer reset lands
+  in the wrong application.
+
+  One asymmetry to keep in mind when adding them: the customer PWA passes its
+  own origin, but the staff app passes none and leans on the Site URL naming
+  it. That is deliberate — staff is served from a Pages sub-path (`/amuwak/`)
+  that a bare origin would drop — but it means moving the Site URL to the
+  customer app silently breaks riders' reset links, and staff would have to
+  start passing an explicit origin-plus-base-path first.
+- Auth settings: minimum length **8**; required character sets **off** (per
+  NIST).
+- Verify in dashboard: recovery-link expiry (long enough for a new hire to
+  act), and whether a password change revokes other sessions.
+
+### A2 — Blocked on owning a sending domain
+
+Declined for now (2026-08-04): the project owns no domain and no subdomain it
+controls DNS for, and buying one was ruled out. Until this lands, **no email
+reaches anyone outside the Supabase team members**, and the built-in mailer is
+capped at a couple of sends an hour. See the interim phase below.
+
+- **Postmark**: verify the sending domain with SPF, DKIM and DMARC. Chosen over
+  Resend now that cost is not a constraint — 98%+ inbox placement, ~10s median
+  delivery, and it accepts only transactional mail, so shared-IP reputation
+  cannot be damaged by other tenants' marketing.
+- **Send Email Hook** → Postmark. Replaces Supabase's built-in sender, fires on
+  `recovery`, and gives real templates instead of the dashboard editor.
+- **Supabase Pro** — required for Leaked Password Protection (HIBP); also brings
+  PITR and longer log retention. Independent of the domain, but pointless to
+  buy before mail works.
+- Auth settings: leaked password protection **on** (needs Pro).
+- **Cloudflare Turnstile** on auth endpoints.
+
+## Phase A-interim — Account recovery while A2 is deferred
+
+Design: `docs/superpowers/specs/2026-08-04-interim-account-recovery-design.md`.
+
+With A2 deferred, three flows have no delivery: customer reset, staff invite,
+staff reset. A locked-out customer has no way back in and **a new rider cannot
+be onboarded at all**. Three pieces stand in:
+
+1. **`SELF_SERVICE_RESET` build flag, default off.** Hides the customer app's
+   "Forgot password?" behind "Contact Amuwak to reset your password", and
+   redirects `/forgot-password` to `/login`. Gates the entry point only — the
+   screens, routes and tests stay in the tree. Fixes an app that currently
+   tells every user *"if an account exists, we have sent it a link"* when that
+   is false for all of them.
+2. **Verification walks** on `localhost` against the hosted project, using the
+   built-in mailer to a team-member address: customer reset same-browser,
+   customer reset second-browser, staff invite. Walks 2 and 3 only after the
+   A1 template flip.
+3. **Manager-issued temporary passwords**, for customers and staff alike. One
+   `issue-temporary-password` Edge Function on the service-role key, shaped
+   like `reset-staff-mfa` from #106: generate, set, flag must-change, audit,
+   return once for the manager to read aloud. The must-change flag rides as an
+   access-token claim (both gates are synchronous, and the staff app's Drift
+   copy is empty on a first sign-in), and it lands the user on the set-password
+   screens #104/#107 already hardened.
+
+   **Managers only, for every target.** For staff that is non-negotiable — a
+   driver who could issue a manager's password turns one stolen rider phone
+   into administrative takeover. For customers it is a deliberate tightening
+   over the first draft: a rider doing it is account takeover of a third party.
+   The cost is that a rider in front of a locked-out customer must reach a
+   manager; if that proves too slow the lever is `in_shop`, not drivers.
+
+**Accepted limitation:** without email nobody can be *told* their password was
+reset — precisely the notification Phase D exists to provide. The audit table
+is the only control and it is after the fact. This is the strongest argument
+for revisiting the domain decision.
 
 ## Phase B — Customer password reset (code)
 
@@ -181,10 +249,14 @@ Skip the phone/SMS add-on ($75/month); TOTP is free and stronger.
 - `flutter analyze` clean; run each test file singly (this host crashes the
   Flutter tool on concurrent `flutter test` runs in one worktree).
 - pgTAP for the Phase D trigger.
-- **Live E2E** (needs Phase A): request a reset for a real address; confirm it
-  arrives from Postmark (SPF/DKIM pass in headers, not in spam); follow the
-  link; confirm it lands on the reset screen and not the staff app; set a
-  password; confirm a fresh login is required and the notification email
+- **Live E2E, part one** (needs only A1): the three verification walks in Phase
+  A-interim, on `localhost` against the hosted project, delivered by the
+  built-in mailer to a team-member address. Enough to prove the link shape, the
+  routing and the invite fix.
+- **Live E2E, part two** (needs A2): request a reset for a real address;
+  confirm it arrives from Postmark (SPF/DKIM pass in headers, not in spam);
+  follow the link; confirm it lands on the reset screen and not the staff app;
+  set a password; confirm a fresh login is required and the notification email
   arrives. Then confirm a known-breached password is rejected by HIBP.
 
 ## Roadmap — not in this plan
