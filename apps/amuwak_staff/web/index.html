@@ -18,6 +18,16 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!--
+    Invite and password-recovery links arrive as ?code=<one-time code> in the
+    URL (see AuthGate), and any third-party resource this page requests would
+    otherwise receive that code in its Referer header — a live account-takeover
+    token. The customer app sends this as a real response header via Cloudflare
+    Pages' _headers; this app deploys to GitHub Pages, which ignores that file,
+    so the meta tag is the only mechanism available here. Nothing in this app
+    depends on the referrer being sent.
+  -->
+  <meta name="referrer" content="no-referrer">
   <meta name="description" content="On-the-road tool for Amuwak laundry pickup and delivery riders.">
 
   <!-- iOS PWA support -->

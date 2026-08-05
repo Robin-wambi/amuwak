@@ -115,9 +115,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       obscureText: true,
                       autofillHints: const [AutofillHints.newPassword],
                       decoration: const InputDecoration(labelText: 'Password'),
-                      validator: (v) => (v ?? '').length < 6
-                          ? 'Use at least 6 characters'
-                          : null,
+                      validator: passwordPolicyError,
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: AppSpacing.md),

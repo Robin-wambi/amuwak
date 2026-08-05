@@ -18,6 +18,15 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!--
+    A password recovery link arrives as ?code=<one-time code> in the URL, and
+    any third-party resource this page requests would otherwise receive that
+    code in its Referer header. web/_headers sends the same policy as a real
+    response header, which is stronger; this tag is the belt to that braces and
+    keeps the protection if the app is ever served from a host that does not
+    read _headers. Nothing here depends on the referrer being sent.
+  -->
+  <meta name="referrer" content="no-referrer">
   <meta name="description" content="Book a laundry pickup, track it live, and chat with the shop.">
   <meta name="theme-color" content="#A85A1F">
 

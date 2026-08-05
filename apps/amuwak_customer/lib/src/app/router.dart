@@ -5,7 +5,11 @@ import 'package:go_router/go_router.dart';
 
 import '../account/profile_screen.dart';
 import '../auth/complete_profile_screen.dart';
+import '../auth/forgot_password_screen.dart';
 import '../auth/login_screen.dart';
+import '../auth/recovery_link_failed_screen.dart';
+import '../auth/recovery_state.dart';
+import '../auth/reset_password_screen.dart';
 import '../auth/signup_screen.dart';
 import '../auth/staff_account_screen.dart';
 import '../cart/cart_screen.dart';
@@ -24,6 +28,21 @@ const kCompleteProfileRoute = '/complete-profile';
 
 /// Where a signed-in STAFF account is sent — this app has nothing for them.
 const kStaffAccountRoute = '/staff-account';
+
+/// Where a signed-out visitor asks for a reset link.
+const kForgotPasswordRoute = '/forgot-password';
+
+/// Where a recovery link lands. The emailed link does NOT name this route — it
+/// targets the origin root, Supabase appends `?code=…`, supabase_flutter
+/// exchanges it and raises `passwordRecovery`, and the redirect below routes on
+/// that state. Naming the route in `redirectTo` would put a query string after
+/// the URL fragment, because this app runs Flutter web's default hash strategy.
+const kResetPasswordRoute = '/reset-password';
+
+/// Where a recovery link that could not be opened explains itself. Not
+/// `/link-expired`: the link is usually fine, it is just being opened somewhere
+/// that cannot complete it, and the screen is careful not to claim otherwise.
+const kRecoveryLinkFailedRoute = '/recovery-link-error';
 
 /// The staff roles the access-token hook can mint (Supabase migration 0043).
 /// Staff wins over customer in that hook, so a person who is both reads as
@@ -51,14 +70,38 @@ const _staffRoles = {'driver', 'in_shop', 'manager'};
 /// A null role means the token is missing/expired mid-refresh rather than a
 /// verdict about the account (the hook always mints one of the three), so it is
 /// treated as a customer rather than bouncing someone mid-refresh.
+///
+/// [recovering] is evaluated before any role, because a recovery link signs the
+/// user in: without it they would sail past into the app and never be asked for
+/// a new password. It deliberately outranks both interstitials — a stranded
+/// account sets its password first, then finishes setup. It does NOT outrank
+/// being signed out: with no session there is nothing to update against.
+///
+/// [recoveryLinkFailed] is the opposite corner: a link arrived and produced no
+/// session at all, so it is only ever consulted while signed out. Left alone
+/// it would look like an ordinary visit and drop the user on `/login` with
+/// nothing to explain why the emailed link did nothing.
 String? customerAuthRedirect({
   required bool signedIn,
   required String location,
   String? role,
+  bool recovering = false,
+  bool recoveryLinkFailed = false,
 }) {
-  final onAuthPage = location == '/login' || location == '/signup';
-  if (!signedIn) return onAuthPage ? null : '/login';
+  final onAuthPage = location == '/login' ||
+      location == '/signup' ||
+      location == kForgotPasswordRoute ||
+      location == kRecoveryLinkFailedRoute;
+  if (!signedIn) {
+    // Only from outside the auth pages, so the notice can hand the user on to
+    // request another link instead of bouncing them back to itself.
+    if (recoveryLinkFailed && !onAuthPage) return kRecoveryLinkFailedRoute;
+    return onAuthPage ? null : '/login';
+  }
 
+  if (recovering) {
+    return location == kResetPasswordRoute ? null : kResetPasswordRoute;
+  }
   if (_staffRoles.contains(role)) {
     return location == kStaffAccountRoute ? null : kStaffAccountRoute;
   }
@@ -67,7 +110,8 @@ String? customerAuthRedirect({
   }
   if (onAuthPage ||
       location == kStaffAccountRoute ||
-      location == kCompleteProfileRoute) {
+      location == kCompleteProfileRoute ||
+      location == kResetPasswordRoute) {
     return '/';
   }
   return null;
@@ -84,6 +128,11 @@ String? customerAuthRedirect({
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
   ref.listen(authStateProvider, (_, __) => refresh.value++);
+  // Recovery starts and ends without the auth state itself changing shape, so
+  // the redirect needs its own trigger — otherwise the user sits on the wrong
+  // screen until some unrelated auth event happens to bump the listenable.
+  // This also keeps the notifier alive so its own listener stays subscribed.
+  ref.listen(recoveringProvider, (_, __) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
@@ -92,6 +141,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) => customerAuthRedirect(
       signedIn: ref.read(currentUserIdProvider) != null,
       role: ref.read(currentRoleProvider),
+      recovering: ref.read(recoveringProvider),
+      recoveryLinkFailed: ref.read(recoveryLinkFailedProvider),
       location: state.matchedLocation,
     ),
     routes: [
@@ -103,6 +154,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: kStaffAccountRoute,
           builder: (_, __) => const StaffAccountScreen()),
+      GoRoute(
+          path: kForgotPasswordRoute,
+          builder: (_, __) => const ForgotPasswordScreen()),
+      GoRoute(
+          path: kResetPasswordRoute,
+          builder: (_, __) => const ResetPasswordScreen()),
+      GoRoute(
+          path: kRecoveryLinkFailedRoute,
+          builder: (_, __) => const RecoveryLinkFailedScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             ShellScaffold(navigationShell: navigationShell),

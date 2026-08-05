@@ -70,11 +70,23 @@ class AuthService {
     }
   }
 
-  /// Send a password-reset email. The redirect target is the project's Site URL
-  /// configured in Supabase, so no URL is hard-coded in the app.
-  Future<void> sendPasswordReset(String email) async {
+  /// Send a password-reset email.
+  ///
+  /// With no [redirectTo] the link targets the project's Site URL. That is only
+  /// correct for whichever app the Site URL happens to name — both apps share
+  /// one auth project, so the other must pass its own origin or its users land
+  /// in the wrong application.
+  ///
+  /// Pass an origin, not a route: Supabase appends `?code=…` to this URL, and a
+  /// Flutter web app on the default hash strategy would end up with a query
+  /// string after the fragment. supabase_flutter exchanges the code on startup
+  /// and raises `passwordRecovery`; routing to a reset screen is the app's job.
+  Future<void> sendPasswordReset(String email, {String? redirectTo}) async {
     try {
-      await _goTrue.resetPasswordForEmail(_normalizeEmail(email));
+      await _goTrue.resetPasswordForEmail(
+        _normalizeEmail(email),
+        redirectTo: redirectTo,
+      );
     } on AuthException catch (e) {
       throw AuthFailure(e.message);
     }
@@ -82,7 +94,16 @@ class AuthService {
 
   static String _normalizeEmail(String email) => email.trim().toLowerCase();
 
-  Future<void> signOut() => _goTrue.signOut();
+  /// End the session. GoTrue drops the local session and raises `signedOut`
+  /// before it calls the server, so a failure here means the revoke request
+  /// failed — the user is signed out locally either way.
+  Future<void> signOut() async {
+    try {
+      await _goTrue.signOut();
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    }
+  }
 
   Session? get currentSession => _goTrue.currentSession;
   User?    get currentUser    => _goTrue.currentUser;

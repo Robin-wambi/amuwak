@@ -1,0 +1,10 @@
+# Cloudflare Pages serves this file natively; it is not part of the Flutter
+# build, so it must live in web/ to be copied into build/web.
+#
+# Referrer-Policy: a password recovery link arrives as ?code=<one-time code> in
+# the URL. Without this header any third-party resource the page requests would
+# receive that code in the Referer header, handing over a live account-takeover
+# token. no-referrer is safe here because nothing in this app depends on the
+# referrer being sent.
+/*
+  Referrer-Policy: no-referrer

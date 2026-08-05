@@ -140,9 +140,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
                       labelText: 'New password',
                       prefixIcon: Icon(Icons.lock_outline),
                     ),
-                    validator: (v) => (v == null || v.length < 8)
-                        ? 'At least 8 characters'
-                        : null,
+                    validator: passwordPolicyError,
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
