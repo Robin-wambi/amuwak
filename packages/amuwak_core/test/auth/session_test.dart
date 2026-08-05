@@ -14,6 +14,8 @@ class _MockMfaService extends Mock implements MfaService {}
 
 class _MockUser extends Mock implements User {}
 
+class _MockSession extends Mock implements Session {}
+
 /// Builds an unsigned JWT (header.payload.signature) carrying [claims]. The
 /// role reader never verifies the signature, so a dummy segment is fine.
 String _token(Map<String, dynamic> claims) {
@@ -125,6 +127,71 @@ void main() {
       addTearDown(container.dispose);
 
       expect(container.read(currentUserIdProvider), isNull);
+    });
+  });
+
+  group('currentRoleProvider', () {
+    test(
+        'falls back to the restored session on cold start, matching '
+        'currentUserIdProvider', () {
+      // Without this the two providers disagree for the first frames of every
+      // launch: currentUserIdProvider already reads the restored user (signed
+      // in) while the role still reads null. The customer router treats a
+      // signed-in-but-roleless user as a customer, so a staff or unlinked
+      // account was briefly admitted to an app that renders empty for them.
+      final session = _MockSession();
+      when(() => session.accessToken)
+          .thenReturn(_token({'user_role': 'manager'}));
+      final auth = _MockAuthService();
+      when(() => auth.currentSession).thenReturn(session);
+
+      final container = ProviderContainer(overrides: [
+        authServiceProvider.overrideWithValue(auth),
+        authStateProvider
+            .overrideWith((ref) => const Stream<AuthState>.empty()),
+      ]);
+      addTearDown(container.dispose);
+
+      expect(container.read(currentRoleProvider), 'manager');
+    });
+
+    test('prefers the streamed token once the auth stream emits', () async {
+      // A rotated token must win over the one captured at restore time,
+      // otherwise a role change would be pinned to the stale cold-start value.
+      final restored = _MockSession();
+      when(() => restored.accessToken)
+          .thenReturn(_token({'user_role': 'none'}));
+      final fresh = _MockSession();
+      when(() => fresh.accessToken)
+          .thenReturn(_token({'user_role': 'customer'}));
+
+      final auth = _MockAuthService();
+      when(() => auth.currentSession).thenReturn(restored);
+
+      final container = ProviderContainer(overrides: [
+        authServiceProvider.overrideWithValue(auth),
+        authStateProvider.overrideWith(
+          (ref) => Stream.value(AuthState(AuthChangeEvent.signedIn, fresh)),
+        ),
+      ]);
+      addTearDown(container.dispose);
+
+      await container.read(authStateProvider.future);
+      expect(container.read(currentRoleProvider), 'customer');
+    });
+
+    test('is null when there is no restored session and no event', () {
+      final auth = _MockAuthService();
+      when(() => auth.currentSession).thenReturn(null);
+
+      final container = ProviderContainer(overrides: [
+        authServiceProvider.overrideWithValue(auth),
+        authStateProvider
+            .overrideWith((ref) => const Stream<AuthState>.empty()),
+      ]);
+      addTearDown(container.dispose);
+
+      expect(container.read(currentRoleProvider), isNull);
     });
   });
 
