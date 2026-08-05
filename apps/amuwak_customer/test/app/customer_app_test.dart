@@ -35,6 +35,9 @@ void main() {
           // Empty stream so routerProvider's listen never builds AuthService.
           authStateProvider.overrideWith((ref) => Stream<AuthState>.empty()),
           currentUserIdProvider.overrideWithValue(userId),
+          // The redirect reads the role alongside the id, and both fall back to
+          // the restored session when the stream has not emitted — which would
+          // build a real AuthService. Stub it for the same reason as the id.
           currentRoleProvider.overrideWithValue(role),
           recoveringProvider.overrideWith(() => _TestRecovering(recovering)),
           recoveryLinkFailedProvider.overrideWithValue(recoveryLinkFailed),
@@ -60,7 +63,7 @@ void main() {
 
   testWidgets('signed-in customer lands on the Discover dashboard',
       (tester) async {
-    await tester.pumpWidget(app(userId: 'user-1'));
+    await tester.pumpWidget(app(userId: 'user-1', role: 'customer'));
     // The Discover header's sheen animates forever, so pumpAndSettle would hang.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));

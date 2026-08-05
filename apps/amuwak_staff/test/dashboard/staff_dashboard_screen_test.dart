@@ -159,6 +159,14 @@ Future<void> pumpDashboardWithDb(
         // Supabase mock and deterministic (no name) in tests.
         currentStaffProvider
             .overrideWith((ref) => Stream<StaffData?>.value(null)),
+        // The header reads the role for its label and the manager-only
+        // affordances. It falls back to the restored session when the auth
+        // stream has not emitted, which would build a real AuthService against
+        // an uninitialised Supabase — so pin it. Null keeps the generic
+        // "Operations staff" label these tests already assert; the cases that
+        // need a real role pass one through [extraOverrides], which is spread
+        // after this and therefore wins.
+        currentRoleProvider.overrideWithValue(null),
         ...extraOverrides,
       ],
       child: MaterialApp(
@@ -671,6 +679,9 @@ void main() {
     // connection time, which would leave a pending Timer at test teardown.
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        // Pin the role: the header reads it, and it falls back to the restored
+        // session (a real AuthService) when the auth stream has not emitted.
+        currentRoleProvider.overrideWithValue(null),
         ordersStreamProvider.overrideWith((ref) => const Stream.empty()),
         pendingOutboxCountProvider
             .overrideWith((ref) => const Stream<int>.empty()),
@@ -720,6 +731,9 @@ void main() {
     // test teardown.
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        // Pin the role: the header reads it, and it falls back to the restored
+        // session (a real AuthService) when the auth stream has not emitted.
+        currentRoleProvider.overrideWithValue(null),
         ordersStreamProvider
             .overrideWith((ref) => Stream.error(Exception('boom'))),
         pendingOutboxCountProvider
@@ -769,6 +783,9 @@ void main() {
 
       await tester.pumpWidget(ProviderScope(
         overrides: [
+          // Pin the role: the header reads it, and it falls back to the restored
+          // session (a real AuthService) when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue(null),
           ordersStreamProvider
               .overrideWith((ref) => Stream<List<LaundryOrder>>.value(const [])),
           pendingOutboxCountProvider
@@ -843,6 +860,9 @@ void main() {
 
       await tester.pumpWidget(ProviderScope(
         overrides: [
+          // Pin the role: the header reads it, and it falls back to the restored
+          // session (a real AuthService) when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue(null),
           ordersStreamProvider
               .overrideWith((ref) => Stream<List<LaundryOrder>>.value(const [])),
           pendingOutboxCountProvider
@@ -910,6 +930,9 @@ void main() {
 
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        // Pin the role: the header reads it, and it falls back to the restored
+        // session (a real AuthService) when the auth stream has not emitted.
+        currentRoleProvider.overrideWithValue(null),
         ordersStreamProvider.overrideWith((ref) => controller.stream),
         pendingOutboxCountProvider
             .overrideWith((ref) => const Stream<int>.empty()),
@@ -990,6 +1013,9 @@ void main() {
 
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        // Pin the role: the header reads it, and it falls back to the restored
+        // session (a real AuthService) when the auth stream has not emitted.
+        currentRoleProvider.overrideWithValue(null),
         ordersStreamProvider.overrideWith(
           (ref) => Stream<List<LaundryOrder>>.value(const [seeded]),
         ),
@@ -2124,6 +2150,9 @@ void main() {
     (tester) async {
       await tester.pumpWidget(ProviderScope(
         overrides: [
+          // Pin the role: the header reads it, and it falls back to the restored
+          // session (a real AuthService) when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue(null),
           supabaseClientProvider.overrideWithValue(_MockSupabaseClient()),
           ordersStreamProvider.overrideWith((ref) => const Stream.empty()),
           currentStaffProvider
@@ -2153,6 +2182,9 @@ void main() {
     (tester) async {
       await tester.pumpWidget(ProviderScope(
         overrides: [
+          // Pin the role: the header reads it, and it falls back to the restored
+          // session (a real AuthService) when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue(null),
           supabaseClientProvider.overrideWithValue(_MockSupabaseClient()),
           ordersStreamProvider
               .overrideWith((ref) => Stream.error(Exception('boom'))),
@@ -2188,6 +2220,9 @@ void main() {
     (tester) async {
       await tester.pumpWidget(ProviderScope(
         overrides: [
+          // Pin the role: the header reads it, and it falls back to the restored
+          // session (a real AuthService) when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue(null),
           supabaseClientProvider.overrideWithValue(_MockSupabaseClient()),
           ordersStreamProvider.overrideWith((ref) => const Stream.empty()),
           currentStaffProvider
@@ -2216,6 +2251,9 @@ void main() {
     (tester) async {
       await tester.pumpWidget(ProviderScope(
         overrides: [
+          // Pin the role: the header reads it, and it falls back to the restored
+          // session (a real AuthService) when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue(null),
           supabaseClientProvider.overrideWithValue(_MockSupabaseClient()),
           ordersStreamProvider
               .overrideWith((ref) => Stream.error(Exception('boom'))),
