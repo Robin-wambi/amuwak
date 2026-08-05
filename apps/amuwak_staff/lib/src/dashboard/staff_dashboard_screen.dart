@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../auth/mfa_enrolment_screen.dart';
-import '../auth/sign_out.dart';
+import '../auth/sign_out_provider.dart';
 import 'current_staff_provider.dart';
 import 'dashboard_header_content.dart';
 import '../notifications/notification_summary.dart';
@@ -37,8 +37,6 @@ import '../pricing/pricing_catalog_screen.dart';
 import '../staff/invite_staff_screen.dart';
 import '../printing/printing_providers.dart';
 import '../sync/repository_providers.dart';
-import '../sync/sync_orchestrator_provider.dart';
-import '../sync/sync_status.dart';
 // Phase 5 (offline UX): re-add these to surface pending/dead-letter state.
 // import '../shared/widgets/sync_status_banner.dart';
 // import '../sync/sync_errors_provider.dart';
@@ -183,16 +181,12 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     // No navigation here — AuthGate routes to LoginScreen once the session clears.
   }
 
-  /// Production wiring: resolves the auth service, sync orchestrator, and local
-  /// database from Riverpod and hands them to [signOutAndReset], which stops the
-  /// sync engine and truncates the local cache before revoking the session.
-  Future<void> _defaultSignOut(WidgetRef ref) {
-    return signOutAndReset(
-      auth: ref.read(authServiceProvider),
-      orchestrator: ref.read(syncOrchestratorProvider),
-      db: ref.read(appDatabaseProvider),
-    );
-  }
+  /// Production wiring: [signOutAndResetFromRef] resolves the auth service,
+  /// sync orchestrator, and local database from Riverpod and hands them to
+  /// `signOutAndReset`, which stops the sync engine and truncates the local
+  /// cache before revoking the session. Shared with the MFA challenge screen
+  /// so both sign-out controls tear the same things down.
+  Future<void> _defaultSignOut(WidgetRef ref) => signOutAndResetFromRef(ref);
 
   Future<void> _handleNewPickup() async {
     final staffId = ref.read(currentUserIdProvider);
