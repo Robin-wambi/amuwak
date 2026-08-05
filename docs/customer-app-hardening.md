@@ -33,6 +33,50 @@ live environment are done; the rest need a real Supabase project + devices.
 - [ ] **Two-way chat.** Customer sends on an order; staff sees it via the
       order-details chat action and replies; customer's inbox shows the unread
       staff message and the reply lands in the order chat.
+- [ ] **Confirm the access-token hook fires on the local stack.** `config.toml`
+      now registers `public.custom_access_token_hook`, but that was only checked
+      as far as the CLI parsing it — Docker was unavailable. Run
+      `supabase start -x storage-api,imgproxy --ignore-health-check`, sign in,
+      and decode the JWT: `user_role` must be present. If it is missing the
+      whole role-routing policy is inert locally while still working in prod,
+      which is the worst version of this bug to debug.
+
+## Dual staff + customer accounts (needs a decision, sized by one query)
+
+`custom_access_token_hook` resolves the staff branch first (`0043`, and staff
+must be `active = true`), so a user who is active staff **and** has a live
+`customers` row reads as staff. Since PR #103 that pins them to
+`kStaffAccountRoute` permanently.
+
+Before #103 those users reached the customer app and it worked — they have a
+`customers` row, so `auth_customer_id()` resolves and their orders load. So this
+is a behavioural regression for that population, not merely a new restriction.
+The notice tells them to sign out and sign up with a personal email, which
+works but strands the order history on the old row.
+
+Size it first — the fix is only worth building if this returns rows:
+
+```sql
+select s.id, s.role, c.id as customer_id
+  from public.staff s
+  join public.customers c on c.auth_user_id = s.id
+ where s.active = true
+   and c.deleted_at is null;
+```
+
+- **Zero rows** → no action. Staff having a separate personal customer account
+  is the intended shape, and the notice already says so.
+- **Any rows** → decide between:
+  1. *Let them through.* Add a separate `is_customer` boolean claim in the hook
+     (leaving `user_role` alone, so the staff app is untouched) and let
+     `customerAuthRedirect` admit a staff role that also carries
+     `is_customer: true`. Costs a migration and a router branch.
+  2. *Migrate them off.* Keep the current routing and re-point those
+     `customers` rows at a personal auth user, so the history follows them.
+
+Whichever way it goes, `customerAuthRedirect` deserves a test pinning the
+decision — right now nothing documents that a dual account is deliberately
+excluded.
 
 ## Deferred code items (follow-ups)
 
