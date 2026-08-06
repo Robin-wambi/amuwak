@@ -107,6 +107,9 @@ SELECT is(
   'regenerating replaces the previous set');
 
 -- 8-11. Redemption. Mint a known set and redeem one of them.
+-- If CREATE TEMP TABLE is refused for the `authenticated` role, add
+-- `RESET ROLE;` before it and re-set the role plus the jwt claims after — the
+-- codes only need capturing, not capturing under that role.
 CREATE TEMP TABLE issued AS
   SELECT unnest(generate_mfa_recovery_codes()) AS code;
 
@@ -127,9 +130,11 @@ SELECT is(
   'redemption clears the remaining codes, keeping the burned one');
 
 -- Another user's code is not accepted.
+-- NB: SELECT, not PERFORM — PERFORM is plpgsql-only and is a syntax error in a
+-- plain SQL script like this one.
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e2","aal":"aal2"}';
-PERFORM generate_mfa_recovery_codes();
+SELECT generate_mfa_recovery_codes();
 SELECT ok(
   NOT redeem_mfa_recovery_code((SELECT code FROM issued OFFSET 1 LIMIT 1)),
   'another user''s code is refused');
