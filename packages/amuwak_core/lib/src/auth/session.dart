@@ -4,10 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
 import 'mfa_service.dart';
+import 'recovery_codes_service.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
 final mfaServiceProvider = Provider<MfaService>((ref) => MfaService());
+
+final recoveryCodesServiceProvider =
+    Provider<RecoveryCodesService>((ref) => RecoveryCodesService());
 
 /// Whether this session still owes a second factor.
 ///
