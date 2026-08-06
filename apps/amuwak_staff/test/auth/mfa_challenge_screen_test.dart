@@ -138,6 +138,25 @@ void main() {
         factorId: any(named: 'factorId'), code: any(named: 'code'))).called(1);
   });
 
+  testWidgets('does not blame the code when it was the network that failed',
+      (tester) async {
+    // Telling a rider on a dropped connection that their code "did not match"
+    // sends them back to an authenticator that was right all along.
+    when(() => mfa.submitCode(
+            factorId: any(named: 'factorId'), code: any(named: 'code')))
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Verify'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('did not match'), findsNothing);
+    expect(find.textContaining('Could not reach the server'), findsOneWidget);
+  });
+
   testWidgets('waits for the factor rather than offering a dead Verify button',
       (tester) async {
     // verifiedFactors() refreshes the session first, so on a rider's network

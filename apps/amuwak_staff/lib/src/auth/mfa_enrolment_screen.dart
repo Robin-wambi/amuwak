@@ -3,12 +3,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Adds an authenticator app as a second factor.
+import 'mfa_error_text.dart';
+
+/// Reports whether two-factor is on after this screen finished with it.
+typedef MfaChangedFn = void Function({required bool enabled});
+
+/// Which of the screen's two jobs it is doing.
+enum _Stage {
+  /// Asking whether a factor already exists — the answer decides everything
+  /// below, so nothing is rendered until it lands.
+  checking,
+
+  /// No factor yet: show the QR and take a code.
+  setup,
+
+  /// Already enrolled: offer to turn it off. Starting a second enrolment here
+  /// would collide on the friendly name and dead-end at an error.
+  enrolled,
+
+  /// Neither question could be answered.
+  failed,
+}
+
+/// Manages the authenticator app that acts as a second factor — adding one, or
+/// removing the one that is already there.
 ///
-/// Enrolment starts as soon as the screen opens, because the QR is the whole
-/// point of being here — making someone tap "begin" first is a step with no
-/// decision in it.
+/// Setup starts as soon as the screen opens, because the QR is the whole point
+/// of being here — making someone tap "begin" first is a step with no decision
+/// in it. But it only starts once the screen knows no factor exists: enrolling
+/// over the top of a verified factor fails on the duplicate friendly name, and
+/// an already-enrolled staff member tapping the Account entry would get nothing
+/// but "could not start two-factor setup" with no way forward.
 ///
 /// The factor Supabase creates is inert until [MfaService.submitCode] verifies
 /// it, so abandoning this screen leaves nothing behind that could demand a code
@@ -16,9 +43,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 class MfaEnrolmentScreen extends ConsumerStatefulWidget {
   const MfaEnrolmentScreen({super.key, required this.onCompleted});
 
-  /// Called once the factor is active. The caller closes this screen — matching
-  /// [SetPasswordScreen], which reports completion the same way.
-  final VoidCallback onCompleted;
+  /// Called once the factor is active, or once it has been removed. The caller
+  /// closes this screen — matching [SetPasswordScreen], which reports
+  /// completion the same way.
+  final MfaChangedFn onCompleted;
 
   @override
   ConsumerState<MfaEnrolmentScreen> createState() => _MfaEnrolmentScreenState();
@@ -27,7 +55,9 @@ class MfaEnrolmentScreen extends ConsumerStatefulWidget {
 class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   final _formKey = GlobalKey<FormState>();
   final _code = TextEditingController();
+  _Stage _stage = _Stage.checking;
   TotpEnrolment? _enrolment;
+  Factor? _existing;
   bool _busy = false;
   String? _startError;
   String? _codeError;
@@ -45,14 +75,81 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   }
 
   Future<void> _start() async {
+    if (_stage != _Stage.checking) {
+      setState(() {
+        _stage = _Stage.checking;
+        _startError = null;
+      });
+    }
+    final mfa = ref.read(mfaServiceProvider);
     try {
-      final enrolment = await ref.read(mfaServiceProvider).enrollTotp();
-      if (mounted) setState(() => _enrolment = enrolment);
+      final factors = await mfa.verifiedFactors();
+      if (!mounted) return;
+      if (factors.isNotEmpty) {
+        setState(() {
+          _existing = factors.first;
+          _stage = _Stage.enrolled;
+        });
+        return;
+      }
+      final enrolment = await mfa.enrollTotp();
+      if (mounted) {
+        setState(() {
+          _enrolment = enrolment;
+          _stage = _Stage.setup;
+        });
+      }
     } catch (_) {
       if (mounted) {
-        setState(() => _startError =
-            'Could not start two-factor setup. Please try again.');
+        setState(() {
+          _stage = _Stage.failed;
+          _startError =
+              'Could not start two-factor setup. Please try again.';
+        });
       }
+    }
+  }
+
+  Future<void> _turnOff() async {
+    final existing = _existing;
+    if (existing == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Turn off two-factor?'),
+        content: const Text(
+          'Your account will be protected by your password alone. You can '
+          'set up an authenticator again at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Turn off'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _busy = true;
+      _codeError = null;
+    });
+    try {
+      await ref.read(mfaServiceProvider).removeFactor(existing.id);
+      if (mounted) widget.onCompleted(enabled: false);
+    } catch (_) {
+      // Reporting completion here would tell the user two-factor is off while
+      // it is still very much on.
+      if (mounted) {
+        setState(() =>
+            _codeError = 'Could not turn two-factor off. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -68,14 +165,11 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
       await ref
           .read(mfaServiceProvider)
           .submitCode(factorId: enrolment.factorId, code: _code.text.trim());
-      if (mounted) widget.onCompleted();
-    } catch (_) {
+      if (mounted) widget.onCompleted(enabled: true);
+    } catch (e) {
       // Codes rotate every 30 seconds, so a stale or mistyped code is the
       // ordinary case rather than an exceptional one. Keep the field ready.
-      if (mounted) {
-        setState(() =>
-            _codeError = 'That code did not match. Try the current one.');
-      }
+      if (mounted) setState(() => _codeError = codeSubmitMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -101,15 +195,72 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   }
 
   Widget _body(ThemeData theme) {
-    if (_startError != null) {
-      return Text(_startError!,
+    switch (_stage) {
+      case _Stage.checking:
+        return const Center(child: CircularProgressIndicator());
+      case _Stage.failed:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(_startError!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.colorScheme.error)),
+            const SizedBox(height: AppSpacing.lg),
+            FilledButton(
+              onPressed: _busy ? null : _start,
+              child: const Text('Retry'),
+            ),
+          ],
+        );
+      case _Stage.enrolled:
+        return _enrolledBody(theme);
+      case _Stage.setup:
+        return _setupBody(theme, _enrolment!);
+    }
+  }
+
+  /// What an already-protected account sees. The only action is removal —
+  /// adding a second authenticator is not something this app needs, and
+  /// attempting it just fails on the duplicate friendly name.
+  Widget _enrolledBody(ThemeData theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Icon(Icons.verified_user_outlined,
+            size: 48, color: theme.colorScheme.primary),
+        const SizedBox(height: AppSpacing.md),
+        Text('Two-factor authentication is on',
+            textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'Signing in on a new device asks for a code from your authenticator '
+          'app as well as your password.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: theme.colorScheme.error));
-    }
-    final enrolment = _enrolment;
-    if (enrolment == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+          style: theme.textTheme.bodyMedium,
+        ),
+        if (_codeError != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(_codeError!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: theme.colorScheme.error)),
+        ],
+        const SizedBox(height: AppSpacing.lg),
+        OutlinedButton(
+          onPressed: _busy ? null : _turnOff,
+          child: _busy
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Turn off'),
+        ),
+      ],
+    );
+  }
+
+  Widget _setupBody(ThemeData theme, TotpEnrolment enrolment) {
     return Form(
       key: _formKey,
       child: Column(

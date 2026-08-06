@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'mfa_error_text.dart';
 import 'sign_out_provider.dart';
 
 /// What the screen knows about the enrolled factor. The code form only exists
@@ -81,11 +82,8 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
       await ref
           .read(mfaServiceProvider)
           .submitCode(factorId: factor.id, code: _code.text.trim());
-    } catch (_) {
-      if (mounted) {
-        setState(() =>
-            _error = 'That code did not match. Try the current one.');
-      }
+    } catch (e) {
+      if (mounted) setState(() => _error = codeSubmitMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

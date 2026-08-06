@@ -7,30 +7,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _MockMfa extends Mock implements MfaService {}
 
 const _enrolment = TotpEnrolment(
   factorId: 'factor-1',
-  qrCodeSvg: '<svg/>',
   otpauthUri: 'otpauth://totp/Amuwak:rider1?secret=JBSWY3DPEHPK3PXP',
   secret: 'JBSWY3DPEHPK3PXP',
 );
 
+Factor _verified(String id) => Factor(
+      id: id,
+      status: FactorStatus.verified,
+      factorType: FactorType.totp,
+      friendlyName: 'Authenticator',
+      updatedAt: DateTime(2026, 1, 1),
+      createdAt: DateTime(2026, 1, 1),
+    );
+
 void main() {
   late _MockMfa mfa;
   int completed = 0;
+  bool? lastEnabled;
 
   setUp(() {
     mfa = _MockMfa();
     completed = 0;
+    lastEnabled = null;
+    // Default: nothing enrolled yet, so the screen goes straight to setup.
+    when(() => mfa.verifiedFactors()).thenAnswer((_) async => <Factor>[]);
   });
 
   Widget harness() => ProviderScope(
         overrides: [mfaServiceProvider.overrideWithValue(mfa)],
         child: MaterialApp(
           theme: buildAmuwakTheme(),
-          home: MfaEnrolmentScreen(onCompleted: () => completed++),
+          home: MfaEnrolmentScreen(onCompleted: ({required enabled}) {
+            completed++;
+            lastEnabled = enabled;
+          }),
         ),
       );
 
@@ -95,6 +111,83 @@ void main() {
     verify(() => mfa.submitCode(factorId: 'factor-1', code: '123456'))
         .called(1);
     expect(completed, 1);
+    expect(lastEnabled, isTrue);
+  });
+
+  testWidgets('offers to turn it off when a factor is already enrolled',
+      (tester) async {
+    // Enrolling again would collide on the friendly name and dead-end at a
+    // generic "could not start" error, which is what someone tapping the
+    // Account entry a second time used to get.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    stubEnroll();
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('is on'), findsOneWidget);
+    expect(find.text('Turn off'), findsOneWidget);
+    expect(find.byType(QrImageView), findsNothing);
+    verifyNever(() => mfa.enrollTotp(friendlyName: any(named: 'friendlyName')));
+  });
+
+  testWidgets('turning it off unenrols the factor', (tester) async {
+    // The lockout escape hatch stops needing a manager in the Supabase
+    // dashboard: removeFactor was written and tested but reachable from
+    // nowhere in the app.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any())).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    verify(() => mfa.removeFactor('factor-1')).called(1);
+    expect(completed, 1);
+    expect(lastEnabled, isFalse);
+  });
+
+  testWidgets('a cancelled turn-off leaves the factor alone', (tester) async {
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    verifyNever(() => mfa.removeFactor(any()));
+    expect(completed, 0);
+  });
+
+  testWidgets('reports a turn-off that failed instead of closing',
+      (tester) async {
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any()))
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    // Closing on failure would tell the user two-factor is off while it is
+    // still very much on.
+    expect(completed, 0);
+    expect(find.textContaining('Could not turn'), findsOneWidget);
   });
 
   testWidgets('keeps the form usable after a wrong code', (tester) async {
@@ -116,6 +209,25 @@ void main() {
     expect(completed, 0);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
         isNotNull);
+  });
+
+  testWidgets('does not blame the code when it was the network that failed',
+      (tester) async {
+    stubEnroll();
+    when(() => mfa.submitCode(
+            factorId: any(named: 'factorId'), code: any(named: 'code')))
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('did not match'), findsNothing);
+    expect(find.textContaining('Could not reach the server'), findsOneWidget);
+    expect(completed, 0);
   });
 
   testWidgets('locks the button while verifying', (tester) async {

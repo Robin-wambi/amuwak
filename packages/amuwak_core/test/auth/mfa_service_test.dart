@@ -54,11 +54,23 @@ void main() {
       // screen may not be able to scan one.
       expect(enrolment.factorId, 'factor-1');
       expect(enrolment.secret, 'SECRET');
-      expect(enrolment.qrCodeSvg, '<svg/>');
-      // The raw otpauth URI too: the apps already ship qr_flutter for order
-      // tags, so they render this themselves rather than pulling in an SVG
-      // renderer just for Supabase's pre-drawn QR.
+      // The raw otpauth URI, not Supabase's pre-drawn SVG: the apps already
+      // ship qr_flutter for order tags, so they render the code themselves
+      // rather than carrying a second copy of the same secret around.
       expect(enrolment.otpauthUri, 'otpauth://x');
+    });
+
+    test('does not put the secret in toString', () {
+      // Both fields are the second factor. The default toString would spill
+      // them into any log line that interpolated the object.
+      const enrolment = TotpEnrolment(
+        factorId: 'factor-1',
+        otpauthUri: 'otpauth://totp/Amuwak:rider1?secret=SUPERSECRET',
+        secret: 'SUPERSECRET',
+      );
+
+      expect(enrolment.toString(), isNot(contains('SUPERSECRET')));
+      expect(enrolment.toString(), contains('factor-1'));
     });
 
     test('wraps AuthException in AuthFailure', () async {
@@ -92,6 +104,36 @@ void main() {
       await expectLater(
         service.submitCode(factorId: 'factor-1', code: '000000'),
         throwsA(isA<AuthFailure>()),
+      );
+    });
+
+    test('a rejected code is not retryable', () async {
+      // The code really was wrong. Retrying the same one changes nothing —
+      // only reading the next one off the authenticator does.
+      when(() => mfa.challengeAndVerify(
+              factorId: any(named: 'factorId'), code: any(named: 'code')))
+          .thenThrow(const AuthException('Invalid TOTP code entered'));
+
+      await expectLater(
+        service.submitCode(factorId: 'factor-1', code: '000000'),
+        throwsA(isA<AuthFailure>()
+            .having((f) => f.retryable, 'retryable', isFalse)),
+      );
+    });
+
+    test('a network failure is marked retryable, not a wrong code', () async {
+      // AuthRetryableFetchException extends AuthException, so flattening every
+      // AuthException into one AuthFailure told a rider whose connection had
+      // dropped that their authenticator was wrong — sending them to re-read a
+      // code that had been correct all along.
+      when(() => mfa.challengeAndVerify(
+              factorId: any(named: 'factorId'), code: any(named: 'code')))
+          .thenThrow(AuthRetryableFetchException(message: 'connection closed'));
+
+      await expectLater(
+        service.submitCode(factorId: 'factor-1', code: '123456'),
+        throwsA(isA<AuthFailure>()
+            .having((f) => f.retryable, 'retryable', isTrue)),
       );
     });
   });

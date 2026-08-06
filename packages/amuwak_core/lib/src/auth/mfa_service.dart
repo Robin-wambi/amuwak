@@ -4,12 +4,12 @@ import 'auth_service.dart';
 
 /// What the user needs on screen to finish enrolling an authenticator app.
 ///
-/// Both fields are secrets: they are equivalent to the second factor itself, so
-/// never log them.
+/// [otpauthUri] and [secret] are both the second factor: anyone holding either
+/// can generate valid codes. Never log them — see [toString], which is written
+/// to keep them out of anything that interpolates this object.
 class TotpEnrolment {
   const TotpEnrolment({
     required this.factorId,
-    required this.qrCodeSvg,
     required this.otpauthUri,
     required this.secret,
   });
@@ -17,20 +17,22 @@ class TotpEnrolment {
   /// Identifies the factor in the follow-up verify call.
   final String factorId;
 
-  /// An SVG, not a URL. Render it directly, or prepend
-  /// `data:image/svg+xml;utf-8,` to use it as an image source.
-  ///
-  /// Both apps prefer [otpauthUri] — they already ship `qr_flutter` for order
-  /// tags, so drawing the code themselves avoids adding an SVG renderer.
-  final String qrCodeSvg;
-
   /// The raw `otpauth://` URI the QR encodes. Render it with the app's existing
   /// QR widget, or hand it to the OS to open an authenticator app directly.
+  ///
+  /// Supabase also returns a pre-drawn SVG of this same QR. It is deliberately
+  /// not carried here: both apps already ship `qr_flutter` for order tags, so
+  /// the SVG would only be a second copy of the secret with no reader.
   final String otpauthUri;
 
   /// Shown alongside the QR for anyone who cannot scan one — a cracked screen
   /// or a desktop browser with no camera.
   final String secret;
+
+  /// Redacted on purpose. The default would print the secret and the URI that
+  /// embeds it, so one interpolated log line would leak the factor.
+  @override
+  String toString() => 'TotpEnrolment(factorId: $factorId, secret: <redacted>)';
 }
 
 /// TOTP multi-factor auth, wrapping the parts of GoTrue's MFA API the apps use
@@ -65,7 +67,6 @@ class MfaService {
         }
         return TotpEnrolment(
           factorId: response.id,
-          qrCodeSvg: totp.qrCode,
           otpauthUri: totp.uri,
           secret: totp.secret,
         );
@@ -108,6 +109,11 @@ class MfaService {
   static Future<T> _wrap<T>(Future<T> Function() body) async {
     try {
       return await body();
+    } on AuthRetryableFetchException catch (e) {
+      // Caught ahead of AuthException, which it extends. Collapsing the two
+      // reports a dropped connection as a rejected code, sending the user back
+      // to an authenticator that was right all along.
+      throw AuthFailure(e.message, retryable: true);
     } on AuthException catch (e) {
       throw AuthFailure(e.message);
     }

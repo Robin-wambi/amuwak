@@ -40,12 +40,20 @@ final _testEventProvider =
 /// Controllable signed-in user id so a test can simulate sign-out mid-render.
 final _testUserIdProvider = StateProvider<String?>((_) => 'u1');
 
+/// Controllable challenge state so a test can clear it mid-render, the way
+/// `mfaChallengeVerified` does in production.
+final _testNeedsMfaProvider = StateProvider<bool>((_) => true);
+
 /// Overrides that let the heavy dashboard build without touching Supabase.
-List<Override> _dashboardStubs() => [
+///
+/// [mfaChallenge] replaces the default constant override for tests that need to
+/// change the answer mid-render; Riverpod rejects a duplicate override, so it
+/// has to be substituted here rather than appended by the caller.
+List<Override> _dashboardStubs({Override? mfaChallenge}) => [
       // The real provider builds an MfaService, which reaches for a Supabase
       // instance no widget test initialises. False is also what these tests
       // mean: no second factor owed, so the gate falls through.
-      needsMfaChallengeProvider.overrideWithValue(false),
+      mfaChallenge ?? needsMfaChallengeProvider.overrideWithValue(false),
       currentRoleProvider.overrideWithValue(null),
       currentStaffProvider.overrideWith((ref) => Stream<StaffData?>.value(null)),
       ordersStreamProvider
@@ -97,6 +105,40 @@ void main() {
 
     expect(find.byType(MfaChallengeScreen), findsOneWidget);
     expect(find.byType(SetPasswordScreen), findsNothing);
+  });
+
+  testWidgets('moves on by itself once the challenge is cleared',
+      (tester) async {
+    // Nothing navigates on success: submitCode upgrades the session to aal2 and
+    // raises mfaChallengeVerified, so needsMfaChallengeProvider recomputes to
+    // false and the gate must route onward on its own. Without that, a staff
+    // member who typed a correct code would sit on the challenge screen with no
+    // indication anything had happened.
+    final container = ProviderContainer(overrides: [
+      currentUserIdProvider.overrideWithValue('u1'),
+      currentAuthEventProvider.overrideWithValue(AuthChangeEvent.signedIn),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      mfaServiceProvider.overrideWithValue(_MockMfaService()),
+      ..._dashboardStubs(
+        mfaChallenge: needsMfaChallengeProvider
+            .overrideWith((ref) => ref.watch(_testNeedsMfaProvider)),
+      ),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: AuthGate()),
+    ));
+    await tester.pump();
+    expect(find.byType(MfaChallengeScreen), findsOneWidget);
+
+    container.read(_testNeedsMfaProvider.notifier).state = false;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byType(MfaChallengeScreen), findsNothing);
+    expect(find.byType(StaffDashboardScreen), findsOneWidget);
   });
 
   testWidgets('does not challenge a staff member who has not enrolled',

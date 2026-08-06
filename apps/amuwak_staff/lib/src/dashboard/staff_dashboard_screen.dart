@@ -493,11 +493,16 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (routeContext) => MfaEnrolmentScreen(
-          onCompleted: () {
+          onCompleted: ({required enabled}) {
             Navigator.of(routeContext).pop();
+            // The Account entry reads its On/Off label from this provider, so
+            // it has to be re-asked or the card contradicts what just happened.
+            ref.invalidate(mfaEnabledProvider);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Two-factor authentication is on.'),
+              SnackBar(
+                content: Text(enabled
+                    ? 'Two-factor authentication is on.'
+                    : 'Two-factor authentication is off.'),
               ),
             );
           },
@@ -693,6 +698,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
               onOpenPricingSettings: _openPricingSettings,
               onInviteStaff: _openInviteStaff,
               onOpenTwoFactor: _openTwoFactor,
+              twoFactorEnabled: ref.watch(mfaEnabledProvider).valueOrNull,
               roleText:
                   roleLabel(ref.watch(currentRoleProvider)) ?? 'Operations staff',
               // Pricing writes are gated to in_shop + manager (migration 0024),
@@ -913,6 +919,7 @@ class _AccountTab extends StatelessWidget {
     required this.onOpenPricingSettings,
     required this.onInviteStaff,
     required this.onOpenTwoFactor,
+    required this.twoFactorEnabled,
     required this.roleText,
     required this.canManagePricing,
     required this.canInviteStaff,
@@ -925,6 +932,10 @@ class _AccountTab extends StatelessWidget {
   /// Opens authenticator enrolment. Shown to every role — a driver's account
   /// can create and complete orders, so it is worth protecting too.
   final VoidCallback onOpenTwoFactor;
+
+  /// Whether a verified factor exists, or null while that is unknown (still
+  /// loading, or the lookup failed).
+  final bool? twoFactorEnabled;
 
   /// Human label for the signed-in staff member's role, mirroring the header
   /// chip (falls back to a generic label when there's no role claim).
@@ -1021,6 +1032,14 @@ class _AccountTab extends StatelessWidget {
               Icon(Icons.shield_outlined, color: colorScheme.primary),
               const SizedBox(width: AppSpacing.md),
               const Expanded(child: Text('Two-factor authentication')),
+              // Null while the status is still loading, or if it could not be
+              // read at all — a status line is not worth a broken Account tab,
+              // and the screen behind this card reports the truth either way.
+              if (twoFactorEnabled != null)
+                Text(
+                  twoFactorEnabled! ? 'On' : 'Off',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
               const Icon(Icons.chevron_right_rounded),
             ],
           ),
