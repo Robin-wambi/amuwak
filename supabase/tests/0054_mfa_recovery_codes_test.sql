@@ -63,17 +63,26 @@ SELECT ok(
 -- application-level access — and the migration deliberately revokes ALL
 -- table privileges from `authenticated` (see tests 1-2), so the check must
 -- run outside that role. RESET ROLE returns to the session's original
--- (superuser) role, which bypasses the REVOKE; it is not re-set to
--- `authenticated` afterward because nothing downstream needs it — the
--- remaining calls are all through the SECURITY DEFINER functions, which key
--- off the `request.jwt.claims` GUC (independent of role), not off privileges
--- on the table.
+-- (superuser) role, which bypasses the REVOKE.
+--
+-- It IS re-set to `authenticated` immediately after, with the matching jwt
+-- claims: assertions 8, 9 and 11 below call `redeem_mfa_recovery_code`, and
+-- that function is only reachable via `GRANT EXECUTE ... TO authenticated`.
+-- Leaving the role reset to superuser would bypass that grant check entirely,
+-- so those assertions would keep passing even if the GRANT were later dropped
+-- or mis-scoped — a coverage gap on exactly the security surface this
+-- feature exists to test. Re-setting the role after each introspection read
+-- keeps the redeem-path assertions honest.
 RESET ROLE;
 SELECT is(
   (SELECT count(*)::int FROM mfa_recovery_codes
     WHERE user_id = '00000000-0000-0000-0000-0000000000e1'),
   10,
   'regenerating replaces the previous set');
+
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
 
 -- 8-11. Redemption. Mint a known set and redeem one of them.
 -- If CREATE TEMP TABLE is refused for the `authenticated` role, add
@@ -92,6 +101,11 @@ SELECT ok(
 
 -- Redemption clears the rest: once two-factor is off they are dangling
 -- credentials. One burned row remains as the audit trail.
+-- Same reasoning as assertion 7: this is a direct table read, so it needs
+-- superuser to bypass the REVOKE; role is re-set to `authenticated` again
+-- right after, with user e2's claims this time, so assertion 11 (below)
+-- still proves the GRANT on `redeem_mfa_recovery_code` for that user.
+RESET ROLE;
 SELECT is(
   (SELECT count(*)::int FROM mfa_recovery_codes
     WHERE user_id = '00000000-0000-0000-0000-0000000000e1'),
@@ -101,6 +115,7 @@ SELECT is(
 -- Another user's code is not accepted.
 -- NB: SELECT, not PERFORM — PERFORM is plpgsql-only and is a syntax error in a
 -- plain SQL script like this one.
+SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e2","aal":"aal2"}';
 SELECT generate_mfa_recovery_codes();
