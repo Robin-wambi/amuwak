@@ -6,7 +6,7 @@
 BEGIN;
 SET search_path TO extensions, public;
 
-SELECT plan(11);
+SELECT plan(12);
 
 INSERT INTO auth.users (id) VALUES
   ('00000000-0000-0000-0000-0000000000e1'),
@@ -112,7 +112,22 @@ SELECT is(
   1,
   'redemption clears the remaining codes, keeping the burned one');
 
--- Another user's code is not accepted.
+-- 11-12. Another user's code is not accepted — and, crucially, a failed
+-- cross-account attempt does not silently burn or consume it.
+--
+-- By this point every code in `issued` except the burned one has been
+-- DELETEd (assertion 8's redemption cleanup wipes the rest of e1's set), so
+-- attempting an `issued` row here would fail simply because no such row
+-- exists anywhere — a stripped `WHERE user_id = v_user` predicate in
+-- `redeem_mfa_recovery_code` would still make this pass. Mint a *live* set
+-- for e1 first, so the only possible reason for refusal is the ownership
+-- filter.
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
+CREATE TEMP TABLE live_e1 AS
+  SELECT unnest(generate_mfa_recovery_codes()) AS code;
+
 -- NB: SELECT, not PERFORM — PERFORM is plpgsql-only and is a syntax error in a
 -- plain SQL script like this one.
 SET LOCAL ROLE authenticated;
@@ -120,8 +135,18 @@ SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e2","aal":"aal2"}';
 SELECT generate_mfa_recovery_codes();
 SELECT ok(
-  NOT redeem_mfa_recovery_code((SELECT code FROM issued OFFSET 1 LIMIT 1)),
-  'another user''s code is refused');
+  NOT redeem_mfa_recovery_code((SELECT code FROM live_e1 LIMIT 1)),
+  'another user''s live code is refused');
+
+-- The code e2 was refused must still work for its actual owner — proving
+-- e2's attempt neither burned nor otherwise consumed it. A naive "return
+-- false but burn anyway" implementation would fail this.
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
+SELECT ok(
+  redeem_mfa_recovery_code((SELECT code FROM live_e1 LIMIT 1)),
+  'the code e2 was refused still redeems for its actual owner');
 
 SELECT * FROM finish();
 ROLLBACK;
