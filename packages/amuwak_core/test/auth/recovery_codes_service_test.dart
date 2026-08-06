@@ -58,6 +58,33 @@ void main() {
 
       await expectLater(service.generate(), throwsA(isA<AuthFailure>()));
     });
+
+    test('a malformed server response surfaces AuthFailure, not a TypeError',
+        () async {
+      // Not a List<String> — a Map slipping through here would previously
+      // escape the try/catch as a raw TypeError, an exception type the UI has
+      // no way to render.
+      when(() => rpc('generate_mfa_recovery_codes'))
+          .thenAnswer((_) async => {'unexpected': 'shape'});
+
+      await expectLater(
+        service.generate(),
+        throwsA(isA<AuthFailure>()),
+      );
+    });
+
+    test('a transport failure surfaces a retryable AuthFailure', () async {
+      // No connectivity, DNS failure, timeout — none of these are
+      // PostgrestException, so they must still land as AuthFailure.
+      when(() => rpc('generate_mfa_recovery_codes'))
+          .thenThrow(Exception('Failed host lookup'));
+
+      await expectLater(
+        service.generate(),
+        throwsA(isA<AuthFailure>()
+            .having((f) => f.retryable, 'retryable', isTrue)),
+      );
+    });
   });
 
   group('redeem', () {
@@ -93,6 +120,21 @@ void main() {
               body: any(named: 'body')))
           .thenThrow(FunctionException(
               status: 500, details: {'error': 'Could not check that code.'}));
+
+      await expectLater(
+        service.redeem('AAAAA-BBBBB-CCCCC-DDDDD'),
+        throwsA(isA<AuthFailure>()
+            .having((f) => f.retryable, 'retryable', isTrue)),
+      );
+    });
+
+    test('a transport failure surfaces a retryable AuthFailure', () async {
+      // Riders on poor connections hit this: no connectivity, DNS failure,
+      // timeout. None of these are FunctionException, so they must still
+      // land as a retryable AuthFailure rather than escaping raw.
+      when(() => functions.invoke('redeem-recovery-code',
+              body: any(named: 'body')))
+          .thenThrow(Exception('Failed host lookup'));
 
       await expectLater(
         service.redeem('AAAAA-BBBBB-CCCCC-DDDDD'),

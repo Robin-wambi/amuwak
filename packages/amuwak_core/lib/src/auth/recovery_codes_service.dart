@@ -39,12 +39,27 @@ class RecoveryCodesService {
   /// Mint a fresh set, replacing any previous one. The plaintext exists only in
   /// this return value — it is never stored and never retrievable again.
   Future<List<String>> generate() async {
+    final dynamic result;
     try {
-      final result = await _callRpc('generate_mfa_recovery_codes');
-      return (result as List).cast<String>();
+      result = await _callRpc('generate_mfa_recovery_codes');
     } on PostgrestException catch (e) {
       throw AuthFailure(e.message);
+    } catch (_) {
+      // Not a PostgrestException — a dropped connection, DNS failure, or
+      // timeout reached no verdict, so "try again" is honest advice.
+      throw AuthFailure(
+        'Could not reach the server. Please try again.',
+        retryable: true,
+      );
     }
+    // Checked eagerly and outside the try above: an unchecked `as List` throws
+    // a raw TypeError the UI has no way to render, and a lazy `.cast<String>()`
+    // would defer that failure to whatever iterates the result later, far from
+    // this error boundary.
+    if (result is List && result.every((e) => e is String)) {
+      return List<String>.from(result);
+    }
+    throw AuthFailure('Could not read the recovery codes from the server.');
   }
 
   /// Spend a code. On success the user's TOTP factor is gone and two-factor is
@@ -57,6 +72,14 @@ class RecoveryCodesService {
       // A 5xx never reached a verdict, so "try again" is honest. A 400 means
       // the code was read and rejected — retrying it changes nothing.
       throw AuthFailure(_messageFrom(e), retryable: e.status >= 500);
+    } catch (_) {
+      // Not a FunctionException — a dropped connection, DNS failure, or
+      // timeout, exactly the class of failure riders on poor connections hit.
+      // No verdict was reached, so this is retryable.
+      throw AuthFailure(
+        'Could not reach the server. Please try again.',
+        retryable: true,
+      );
     }
   }
 
