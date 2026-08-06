@@ -111,7 +111,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Sign out'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Sign out').last);
+    await tester.pumpAndSettle();
 
     verify(() => auth.signOut()).called(1);
   });
@@ -215,6 +217,29 @@ void main() {
     expect(find.text('Sign out'), findsOneWidget);
   });
 
+  testWidgets('confirms before signing out, because it wipes local work',
+      (tester) async {
+    // Sign-out here runs the full signOutAndReset: it truncates the outbox
+    // along with everything else, so a stray tap destroys unsynced work. The
+    // dashboard confirms for exactly that reason and this does the same
+    // teardown, so it asks too.
+    when(() => auth.signOut()).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    verifyNever(() => auth.signOut());
+    verifyNever(() => orchestrator.stop());
+    expect(find.byType(MfaChallengeScreen), findsOneWidget);
+  });
+
   testWidgets('sign out tears down the local cache, not just the session',
       (tester) async {
     // signOutAndReset's contract: stop the sync engine and truncate every
@@ -237,6 +262,8 @@ void main() {
 
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Sign out').last);
+    await tester.pumpAndSettle();
 
     verify(() => orchestrator.stop()).called(1);
     verify(() => auth.signOut()).called(1);
@@ -254,6 +281,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Sign out').last);
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not sign out'), findsOneWidget);

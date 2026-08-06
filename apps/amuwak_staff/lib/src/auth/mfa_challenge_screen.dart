@@ -93,7 +93,32 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
   /// sync engine has been pulling since sign-in (`syncLifecycleProvider` starts
   /// on any live session, aal1 included), so the local cache is populated by
   /// the time anyone reaches this screen and has to be torn down with it.
+  ///
+  /// Confirmed first for the same reason the dashboard confirms: that teardown
+  /// truncates the outbox too, so a stray tap on the one control this screen
+  /// offers would destroy unsynced work.
   Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Sign out of this device? You will need to sign in again, and any '
+          'work still waiting to sync will be cleared.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     setState(() {
       _busy = true;
       _error = null;

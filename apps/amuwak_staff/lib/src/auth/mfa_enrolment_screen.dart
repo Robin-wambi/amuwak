@@ -60,7 +60,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   Factor? _existing;
   bool _busy = false;
   String? _startError;
-  String? _codeError;
+  String? _actionError;
 
   @override
   void initState() {
@@ -136,7 +136,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
     if (confirmed != true || !mounted) return;
     setState(() {
       _busy = true;
-      _codeError = null;
+      _actionError = null;
     });
     try {
       await ref.read(mfaServiceProvider).removeFactor(existing.id);
@@ -146,7 +146,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
       // it is still very much on.
       if (mounted) {
         setState(() =>
-            _codeError = 'Could not turn two-factor off. Please try again.');
+            _actionError = 'Could not turn two-factor off. Please try again.');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -159,7 +159,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() {
       _busy = true;
-      _codeError = null;
+      _actionError = null;
     });
     try {
       await ref
@@ -169,7 +169,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
     } catch (e) {
       // Codes rotate every 30 seconds, so a stale or mistyped code is the
       // ordinary case rather than an exceptional one. Keep the field ready.
-      if (mounted) setState(() => _codeError = codeSubmitMessage(e));
+      if (mounted) setState(() => _actionError = codeSubmitMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -240,9 +240,9 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium,
         ),
-        if (_codeError != null) ...[
+        if (_actionError != null) ...[
           const SizedBox(height: AppSpacing.md),
-          Text(_codeError!,
+          Text(_actionError!,
               textAlign: TextAlign.center,
               style: TextStyle(color: theme.colorScheme.error)),
         ],
@@ -309,9 +309,9 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
                 ? null
                 : 'Enter the 6-digit code',
           ),
-          if (_codeError != null) ...[
+          if (_actionError != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text(_codeError!,
+            Text(_actionError!,
                 style: TextStyle(color: theme.colorScheme.error)),
           ],
           const SizedBox(height: AppSpacing.lg),
