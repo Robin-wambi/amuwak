@@ -24,11 +24,22 @@ class RecoveryCodesScreen extends ConsumerStatefulWidget {
 class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
   List<String>? _codes;
   String? _error;
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
     _mint();
+  }
+
+  // Guards against a double tap firing onAcknowledged twice. The check has to
+  // happen synchronously, first thing, rather than only disabling the button:
+  // two taps delivered before a frame rebuilds would otherwise both reach a
+  // still-enabled button in the (stale) widget tree.
+  void _acknowledge() {
+    if (_busy) return;
+    setState(() => _busy = true);
+    widget.onAcknowledged();
   }
 
   Future<void> _mint() async {
@@ -120,7 +131,7 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
         ),
         const SizedBox(height: AppSpacing.md),
         FilledButton(
-          onPressed: widget.onAcknowledged,
+          onPressed: _busy ? null : _acknowledge,
           child: const Text("I've saved these"),
         ),
       ],

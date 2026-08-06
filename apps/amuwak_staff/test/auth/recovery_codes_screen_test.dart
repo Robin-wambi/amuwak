@@ -33,6 +33,32 @@ void main() {
         ),
       );
 
+  // Mirrors how the screen is actually used: pushed on top of another route,
+  // not as the app's sole route. A harness with nothing beneath it on the
+  // stack can't reproduce a pop being attempted and refused.
+  Widget dismissHarness() => ProviderScope(
+        overrides: [recoveryCodesServiceProvider.overrideWithValue(recovery)],
+        child: MaterialApp(
+          theme: buildAmuwakTheme(),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => RecoveryCodesScreen(
+                        onAcknowledged: () => acknowledged++,
+                      ),
+                    ),
+                  ),
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
   testWidgets('shows every code it was given', (tester) async {
     await tester.pumpWidget(harness());
     await tester.pumpAndSettle();
@@ -46,10 +72,37 @@ void main() {
       (tester) async {
     // These are shown exactly once. Letting the screen close on a stray back
     // gesture hands someone a two-factor account with no way back into it.
+    await tester.pumpWidget(dismissHarness());
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text("I've saved these"), findsOneWidget);
+
+    // Simulate the OS back button / predictive-back pop, exactly as
+    // order_details_screen_test.dart does for its own PopScope coverage.
+    final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+    await widgetsAppState.didPopRoute();
+    await tester.pumpAndSettle();
+
+    // Still on the recovery-codes screen: the pop attempt was refused, not
+    // just "the counter didn't move for some unrelated reason".
+    expect(find.text('Recovery codes'), findsOneWidget);
+    expect(find.text('Open'), findsNothing);
+    expect(acknowledged, 0);
+
+    // Acknowledging is still the one working way out.
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+    expect(acknowledged, 1);
+  });
+
+  testWidgets('a rapid double tap only acknowledges once', (tester) async {
+    // onAcknowledged is wired (by the caller) to a pop plus provider
+    // invalidation. Two fast taps before that unmounts this screen must not
+    // fire it twice.
     await tester.pumpWidget(harness());
     await tester.pumpAndSettle();
 
-    expect(acknowledged, 0);
+    await tester.tap(find.text("I've saved these"));
     await tester.tap(find.text("I've saved these"));
     await tester.pumpAndSettle();
 
