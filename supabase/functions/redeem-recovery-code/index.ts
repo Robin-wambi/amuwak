@@ -4,13 +4,21 @@
 // recovery code.
 //
 // A recovery code cannot mint an aal2 session — GoTrue issues aal2 only from a
-// verified factor challenge. So redemption DELETES the user's TOTP factor, which
-// drops nextLevel to aal1 and stops the challenge appearing. That requires the
-// admin API, hence the service-role key, hence this function.
+// verified factor challenge. So redemption DELETES every verified MFA factor on
+// the account (TOTP is the only kind this app enrols today, but the loop below
+// does not assume that), which drops nextLevel to aal1 and stops the challenge
+// appearing. That requires the admin API, hence the service-role key, hence
+// this function.
 //
-// Order is burn-then-delete: the RPC burns the code atomically first. If the
-// admin call then fails the user has spent a code and is still locked out, with
-// nine left — logged loudly below, because that is the case that strands them.
+// Order is burn-then-delete: the RPC burns the code atomically first. The RPC
+// itself no longer deletes the caller's remaining codes — see
+// `clear_mfa_recovery_codes` in migration 0054. That step now happens here,
+// AFTER the factor deletion below has actually succeeded: burning the code and
+// then deleting the sibling codes before the admin call is confirmed to have
+// worked was the bug this ordering fixes. If the admin call fails, the user has
+// spent one code but still has the other nine to retry with — logged loudly
+// below, because that is the case that strands them.
+//
 // The alternative (delete first, burn after) leaves a window where one code is
 // accepted twice.
 //
@@ -18,6 +26,12 @@
 // and is fine, but there is NO anonymous path: an attacker needs the password
 // AND a code.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+
+// A recovery code is 20 hex characters plus 3 dashes (24 chars); normalisation
+// also tolerates spaces or lowercase. Nothing legitimate is anywhere near this
+// long — reject early so an oversized string never reaches regexp_replace and
+// up to ten crypt() calls in the RPC.
+const MAX_CODE_LENGTH = 64;
 
 const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
 
@@ -33,6 +47,18 @@ function json(body: unknown, status: number): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// Used for every failure after the code has already been burned. Deliberately
+// does NOT say "try another code" implying the other nine are still intact —
+// they are, but the wording only needs to be honest: the code just used is
+// spent, two-factor may still be on, and another code will genuinely work
+// now that clearing the siblings happens after factor deletion, not before.
+function stuckAfterBurn(): Response {
+  return json({
+    error: 'That code was accepted, but two-factor could not be turned off. '
+      + 'Try another code.',
+  }, 500);
 }
 
 Deno.serve(async (req) => {
@@ -53,6 +79,9 @@ Deno.serve(async (req) => {
     return json({ error: 'Malformed request.' }, 400);
   }
   if (typeof code !== 'string' || code.trim() === '') {
+    return json({ error: 'Enter a recovery code.' }, 400);
+  }
+  if (code.length > MAX_CODE_LENGTH) {
     return json({ error: 'Enter a recovery code.' }, 400);
   }
 
@@ -79,7 +108,9 @@ Deno.serve(async (req) => {
   }
 
   // The code is spent. Now drop the factors it bought removal of.
-  const admin = createClient(supabaseUrl, serviceKey);
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
   const { data: factors, error: listErr } =
     await admin.auth.admin.mfa.listFactors({ userId });
 
@@ -87,10 +118,28 @@ Deno.serve(async (req) => {
     console.error('CODE BURNED BUT LIST FAILED — user may be stuck', {
       userId, message: listErr.message,
     });
-    return json({ error: 'Could not complete recovery. Try another code.' }, 500);
+    return stuckAfterBurn();
   }
 
-  for (const factor of factors?.factors ?? []) {
+  // Be defensive about the response shape: the documented shape is
+  // `{ factors: [...] }`, but if a future SDK version ever returns a bare
+  // array instead, `factors?.factors ?? []` would silently iterate nothing
+  // and this function would report success having deleted nothing at all —
+  // the one thing this whole path exists to do.
+  const factorList = Array.isArray(factors)
+    ? factors
+    : Array.isArray((factors as { factors?: unknown[] } | null)?.factors)
+      ? (factors as { factors: unknown[] }).factors
+      : null;
+
+  if (factorList === null) {
+    console.error('CODE BURNED BUT FACTOR LIST HAD AN UNEXPECTED SHAPE — '
+      + 'user is stuck', { userId, factors });
+    return stuckAfterBurn();
+  }
+
+  let deletedCount = 0;
+  for (const factor of factorList as { id: string; status: string }[]) {
     if (factor.status !== 'verified') continue;
     const { error: delErr } =
       await admin.auth.admin.mfa.deleteFactor({ userId, id: factor.id });
@@ -98,8 +147,33 @@ Deno.serve(async (req) => {
       console.error('CODE BURNED BUT DELETE FAILED — user is stuck', {
         userId, factorId: factor.id, message: delErr.message,
       });
-      return json({ error: 'Could not complete recovery. Try another code.' }, 500);
+      return stuckAfterBurn();
     }
+    deletedCount += 1;
+  }
+
+  // "Deleted nothing" is not success on a path whose only purpose is
+  // deleting something: it means the account still has a verified factor and
+  // the challenge will still appear, while the user has just been told
+  // recovery worked and spent a code getting told that.
+  if (deletedCount === 0) {
+    console.error('CODE BURNED BUT NO VERIFIED FACTOR WAS FOUND TO DELETE — '
+      + 'user is stuck', { userId, factorCount: factorList.length });
+    return stuckAfterBurn();
+  }
+
+  // Factor deletion is confirmed. Only now clear the caller's remaining
+  // recovery codes — as the CALLER (asCaller), not the service role, so this
+  // stays under the same auth.uid()-scoped RPC pattern as the redeem call
+  // above. A failure here is NOT fatal: the user is already back in with
+  // their password alone, and the worst case is a stale code sitting unused
+  // in the table. Log it and still report success.
+  const { error: clearErr } = await asCaller.rpc('clear_mfa_recovery_codes');
+  if (clearErr) {
+    console.error('FACTOR DELETED BUT CLEARING OLD CODES FAILED — '
+      + 'non-fatal, old codes may remain', {
+      userId, message: clearErr.message,
+    });
   }
 
   return json({ ok: true }, 200);
