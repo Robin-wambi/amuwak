@@ -107,11 +107,38 @@ BEGIN
    WHERE id = v_id AND used_at IS NULL;
   IF NOT FOUND THEN RETURN false; END IF;
 
-  -- Two-factor is about to be switched off; the rest are dangling credentials.
-  -- The burned row stays as an audit trail.
-  DELETE FROM mfa_recovery_codes WHERE user_id = v_user AND id <> v_id;
-
+  -- The remaining codes are deliberately NOT deleted here. This function's
+  -- caller is the Edge Function, which still has to delete the user's TOTP
+  -- factor via the admin API after this returns. If that admin call fails,
+  -- the caller must have codes left to retry with — see
+  -- `clear_mfa_recovery_codes` below, which the Edge Function calls only
+  -- once the factor deletion has actually succeeded. The burned row stays
+  -- either way, as an audit trail.
   RETURN true;
+END;
+$$;
+
+-- Deletes the caller's remaining UNUSED recovery codes. Split out of
+-- `redeem_mfa_recovery_code` so the Edge Function can call this only AFTER
+-- the TOTP factor deletion it performs via the admin API has succeeded — see
+-- that function's ordering note. Operates on auth.uid() only: never accepts
+-- a caller-supplied user id, so there is nothing to spoof.
+--
+-- Only unused rows are deleted (`used_at IS NULL`) so a burned code stays put
+-- as the audit trail, same as before this was split out of
+-- `redeem_mfa_recovery_code`.
+CREATE FUNCTION clear_mfa_recovery_codes()
+RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user uuid := auth.uid();
+BEGIN
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'clear_mfa_recovery_codes requires a signed-in caller';
+  END IF;
+
+  DELETE FROM mfa_recovery_codes WHERE user_id = v_user AND used_at IS NULL;
 END;
 $$;
 
@@ -119,3 +146,5 @@ REVOKE EXECUTE ON FUNCTION generate_mfa_recovery_codes()      FROM public;
 GRANT  EXECUTE ON FUNCTION generate_mfa_recovery_codes()      TO authenticated;
 REVOKE EXECUTE ON FUNCTION redeem_mfa_recovery_code(text)     FROM public;
 GRANT  EXECUTE ON FUNCTION redeem_mfa_recovery_code(text)     TO authenticated;
+REVOKE EXECUTE ON FUNCTION clear_mfa_recovery_codes()         FROM public;
+GRANT  EXECUTE ON FUNCTION clear_mfa_recovery_codes()         TO authenticated;

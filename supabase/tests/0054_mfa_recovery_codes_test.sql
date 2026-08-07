@@ -6,14 +6,17 @@
 BEGIN;
 SET search_path TO extensions, public;
 
-SELECT plan(12);
+SELECT plan(15);
 
 INSERT INTO auth.users (id) VALUES
   ('00000000-0000-0000-0000-0000000000e1'),
   ('00000000-0000-0000-0000-0000000000e2');
 
--- 1-2. The table is unreachable directly: RLS is on with zero policies AND
+-- 1-4. The table is unreachable directly: RLS is on with zero policies AND
 -- every privilege is revoked, so even the owner cannot read their own hashes.
+-- The spec calls out SELECT, INSERT, UPDATE and DELETE explicitly; a blanket
+-- REVOKE ALL covers all four, but each gets its own assertion so a future
+-- narrowing of that REVOKE is caught here rather than assumed.
 SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
@@ -29,7 +32,19 @@ SELECT throws_ok(
   '42501', NULL,
   'authenticated cannot INSERT mfa_recovery_codes directly');
 
--- 3. THE BYPASS. An aal1 session must not be able to mint codes: it could
+SELECT throws_ok(
+  $$UPDATE mfa_recovery_codes SET used_at = now()
+    WHERE user_id = '00000000-0000-0000-0000-0000000000e1'$$,
+  '42501', NULL,
+  'authenticated cannot UPDATE mfa_recovery_codes directly');
+
+SELECT throws_ok(
+  $$DELETE FROM mfa_recovery_codes
+    WHERE user_id = '00000000-0000-0000-0000-0000000000e1'$$,
+  '42501', NULL,
+  'authenticated cannot DELETE mfa_recovery_codes directly');
+
+-- 5. THE BYPASS. An aal1 session must not be able to mint codes: it could
 -- redeem one immediately and defeat two-factor with the password alone.
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal1"}';
@@ -38,7 +53,7 @@ SELECT throws_ok(
   'P0001', NULL,
   'an aal1 session cannot generate recovery codes');
 
--- 4. A missing aal claim fails closed too.
+-- 6. A missing aal claim fails closed too.
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e1"}';
 SELECT throws_ok(
@@ -46,7 +61,7 @@ SELECT throws_ok(
   'P0001', NULL,
   'a missing aal claim fails closed, not open');
 
--- 5-6. An aal2 session gets ten codes in the documented shape.
+-- 7-8. An aal2 session gets ten codes in the documented shape.
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
 SELECT is(
@@ -58,21 +73,21 @@ SELECT ok(
      FROM unnest(generate_mfa_recovery_codes()) AS c),
   'every code is four groups of five uppercase hex');
 
--- 7. Regenerating replaces the previous set rather than adding to it.
+-- 9. Regenerating replaces the previous set rather than adding to it.
 -- This count is a direct table read to inspect internal state, not an
 -- application-level access — and the migration deliberately revokes ALL
--- table privileges from `authenticated` (see tests 1-2), so the check must
+-- table privileges from `authenticated` (see tests 1-4), so the check must
 -- run outside that role. RESET ROLE returns to the session's original
 -- (superuser) role, which bypasses the REVOKE.
 --
 -- It IS re-set to `authenticated` immediately after, with the matching jwt
--- claims: assertions 8, 9 and 11 below call `redeem_mfa_recovery_code`, and
--- that function is only reachable via `GRANT EXECUTE ... TO authenticated`.
--- Leaving the role reset to superuser would bypass that grant check entirely,
--- so those assertions would keep passing even if the GRANT were later dropped
--- or mis-scoped — a coverage gap on exactly the security surface this
--- feature exists to test. Re-setting the role after each introspection read
--- keeps the redeem-path assertions honest.
+-- claims: the redemption assertions below call `redeem_mfa_recovery_code`,
+-- and that function is only reachable via `GRANT EXECUTE ... TO
+-- authenticated`. Leaving the role reset to superuser would bypass that
+-- grant check entirely, so those assertions would keep passing even if the
+-- GRANT were later dropped or mis-scoped — a coverage gap on exactly the
+-- security surface this feature exists to test. Re-setting the role after
+-- each introspection read keeps the redeem-path assertions honest.
 RESET ROLE;
 SELECT is(
   (SELECT count(*)::int FROM mfa_recovery_codes
@@ -84,7 +99,7 @@ SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
 
--- 8-11. Redemption. Mint a known set and redeem one of them.
+-- 10-13. Redemption. Mint a known set and redeem one of them.
 -- If CREATE TEMP TABLE is refused for the `authenticated` role, add
 -- `RESET ROLE;` before it and re-set the role plus the jwt claims after — the
 -- codes only need capturing, not capturing under that role.
@@ -99,29 +114,46 @@ SELECT ok(
   NOT redeem_mfa_recovery_code((SELECT code FROM issued LIMIT 1)),
   'the same code is refused the second time');
 
--- Redemption clears the rest: once two-factor is off they are dangling
--- credentials. One burned row remains as the audit trail.
--- Same reasoning as assertion 7: this is a direct table read, so it needs
--- superuser to bypass the REVOKE; role is re-set to `authenticated` again
--- right after, with user e2's claims this time, so assertion 11 (below)
--- still proves the GRANT on `redeem_mfa_recovery_code` for that user.
+-- Redemption alone must NOT touch the sibling codes: that deletion used to
+-- happen inside `redeem_mfa_recovery_code` itself, which meant a failed
+-- factor deletion in the Edge Function (after the burn had already
+-- committed) left the user with zero usable codes — every one of the
+-- remaining nine had already been wiped by the redeem call that "succeeded".
+-- The delete now lives in `clear_mfa_recovery_codes`, called by the Edge
+-- Function only once the factor deletion has actually gone through. So right
+-- after a redeem: nine unused rows plus the one just-burned row = ten.
+-- Same reasoning as assertion 9: this is a direct table read, so it needs
+-- superuser to bypass the REVOKE; role is re-set to `authenticated`
+-- immediately after.
+RESET ROLE;
+SELECT is(
+  (SELECT count(*)::int FROM mfa_recovery_codes
+    WHERE user_id = '00000000-0000-0000-0000-0000000000e1'),
+  10,
+  'redeeming one code leaves the other nine untouched');
+
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
+
+-- `clear_mfa_recovery_codes` is the piece that used to live inside the
+-- redeem RPC: it deletes the remaining unused codes, keeping the burned row
+-- as the audit trail. This is what the Edge Function calls after it
+-- successfully deletes the TOTP factor.
+SELECT clear_mfa_recovery_codes();
 RESET ROLE;
 SELECT is(
   (SELECT count(*)::int FROM mfa_recovery_codes
     WHERE user_id = '00000000-0000-0000-0000-0000000000e1'),
   1,
-  'redemption clears the remaining codes, keeping the burned one');
+  'clear_mfa_recovery_codes removes the remaining codes, keeping the burned one');
 
--- 11-12. Another user's code is not accepted — and, crucially, a failed
+-- 14-15. Another user's code is not accepted — and, crucially, a failed
 -- cross-account attempt does not silently burn or consume it.
 --
--- By this point every code in `issued` except the burned one has been
--- DELETEd (assertion 8's redemption cleanup wipes the rest of e1's set), so
--- attempting an `issued` row here would fail simply because no such row
--- exists anywhere — a stripped `WHERE user_id = v_user` predicate in
--- `redeem_mfa_recovery_code` would still make this pass. Mint a *live* set
--- for e1 first, so the only possible reason for refusal is the ownership
--- filter.
+-- e1 has only the burned row left at this point (the assertion above cleared
+-- the rest), so mint a fresh *live* set for e1 first, so the only possible
+-- reason for refusal is the ownership filter, not "no such row anywhere".
 SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" =
   '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
