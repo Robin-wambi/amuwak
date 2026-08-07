@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_service.dart';
@@ -44,9 +46,14 @@ class RecoveryCodesService {
       result = await _callRpc('generate_mfa_recovery_codes');
     } on PostgrestException catch (e) {
       throw AuthFailure(e.message);
-    } catch (_) {
+    } catch (e, st) {
       // Not a PostgrestException — a dropped connection, DNS failure, or
-      // timeout reached no verdict, so "try again" is honest advice.
+      // timeout reached no verdict, so "try again" is honest advice. This is
+      // the client boundary in front of an Edge Function whose first real
+      // test is a manual production run, so log what actually happened
+      // rather than losing it behind the generic message below.
+      developer.log('generate_mfa_recovery_codes failed unexpectedly.',
+          name: 'RecoveryCodesService', error: e, stackTrace: st);
       throw AuthFailure(
         'Could not reach the server. Please try again.',
         retryable: true,
@@ -72,10 +79,15 @@ class RecoveryCodesService {
       // A 5xx never reached a verdict, so "try again" is honest. A 400 means
       // the code was read and rejected — retrying it changes nothing.
       throw AuthFailure(_messageFrom(e), retryable: e.status >= 500);
-    } catch (_) {
+    } catch (e, st) {
       // Not a FunctionException — a dropped connection, DNS failure, or
       // timeout, exactly the class of failure riders on poor connections hit.
-      // No verdict was reached, so this is retryable.
+      // No verdict was reached, so this is retryable. Log what actually
+      // happened — this is the client boundary in front of an Edge Function
+      // whose first real test is a manual production run. Deliberately does
+      // NOT log `code`: it is the recovery code itself.
+      developer.log('redeem-recovery-code failed unexpectedly.',
+          name: 'RecoveryCodesService', error: e, stackTrace: st);
       throw AuthFailure(
         'Could not reach the server. Please try again.',
         retryable: true,
