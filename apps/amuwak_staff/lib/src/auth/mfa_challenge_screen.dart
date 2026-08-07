@@ -93,6 +93,13 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
   /// Spend a recovery code. On success the factor is gone, so the session must
   /// be refreshed before the gate will notice — the assurance level is computed
   /// from factors cached on the session user, not re-fetched.
+  ///
+  /// `redeem()` and `refreshSession()` get separate error handling on purpose:
+  /// once `redeem()` resolves, the code is already burned and the factor
+  /// already deleted server-side. If the refresh that follows fails, that is
+  /// not a rejected code — reporting it as one would be false, and it would
+  /// leave the now-spent code sitting in the field inviting a resubmit the
+  /// server will reject anyway.
   Future<void> _useRecoveryCode() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() {
@@ -101,12 +108,26 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
     });
     try {
       await ref.read(recoveryCodesServiceProvider).redeem(_code.text.trim());
-      await ref.read(authServiceProvider).refreshSession();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = e is AuthFailure
-            ? e.message
-            : 'Could not use that recovery code. Please try again.');
+        setState(() {
+          _error = e is AuthFailure
+              ? e.message
+              : 'Could not use that recovery code. Please try again.';
+          _busy = false;
+        });
+      }
+      return;
+    }
+    _code.clear();
+    try {
+      await ref.read(authServiceProvider).refreshSession();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Your recovery code was accepted and two-factor is now '
+              'off. Sign out and sign in again to continue.';
+        });
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -307,6 +328,11 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
                       _recoveryMode = !_recoveryMode;
                       _code.clear();
                       _error = null;
+                      // Both modes render a Form at the same key/position, so
+                      // Flutter reconciles the field in place instead of
+                      // recreating it: clearing the controller alone leaves a
+                      // stale inline validation error on screen.
+                      _formKey.currentState?.reset();
                     }),
             child: Text(_recoveryMode
                 ? 'Use my authenticator instead'

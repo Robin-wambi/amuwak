@@ -345,4 +345,57 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Verify'), findsOneWidget);
   });
+
+  testWidgets(
+      'a successful redeem is never reported as a failure, even if the '
+      'refresh afterward fails', (tester) async {
+    // The code is already burned server-side by the time redeem() resolves.
+    // Telling the user it failed here would be false, and leaving the spent
+    // code in the field would invite a resubmit the server will now reject.
+    when(() => recovery.redeem(any())).thenAnswer((_) async {});
+    when(() => auth.refreshSession())
+        .thenThrow(AuthFailure('network is unreachable', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byType(TextFormField), 'AAAAA-BBBBB-CCCCC-DDDDD');
+    await tester.tap(find.text('Use code'));
+    await tester.pumpAndSettle();
+
+    verify(() => recovery.redeem('AAAAA-BBBBB-CCCCC-DDDDD')).called(1);
+    verify(() => auth.refreshSession()).called(1);
+    expect(find.textContaining('Could not use'), findsNothing);
+    expect(find.textContaining('not valid'), findsNothing);
+    expect(find.textContaining('accepted'), findsOneWidget);
+    // The spent code must not sit in the field inviting a resubmit.
+    expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField))
+            .controller!
+            .text,
+        isEmpty);
+  });
+
+  testWidgets(
+      'switching to a recovery code clears a stale authenticator '
+      'validation error', (tester) async {
+    // Both forms share the same Form key/position, so Flutter reconciles
+    // the field in place rather than recreating it: without an explicit
+    // reset, the old inline error survives the mode switch.
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Verify'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter the 6-digit code'), findsOneWidget);
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enter the 6-digit code'), findsNothing);
+  });
 }
