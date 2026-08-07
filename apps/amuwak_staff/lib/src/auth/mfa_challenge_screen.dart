@@ -119,6 +119,11 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
       }
       return;
     }
+    // Guarded like every other post-await touch in this method: if the screen
+    // was torn down while redeem() was in flight, dispose() has already
+    // disposed this controller and clearing it throws. Nothing below needs to
+    // run in that case either — there is no one left to tell.
+    if (!mounted) return;
     _code.clear();
     try {
       await ref.read(authServiceProvider).refreshSession();

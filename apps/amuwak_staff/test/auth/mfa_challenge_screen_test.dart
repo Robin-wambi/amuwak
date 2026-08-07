@@ -398,4 +398,35 @@ void main() {
 
     expect(find.text('Enter the 6-digit code'), findsNothing);
   });
+
+  testWidgets(
+      'a redeem that resolves after the screen is gone does not throw',
+      (tester) async {
+    // Reproduces disposal mid-flight: redeem() is still in flight when the
+    // screen is torn down (e.g. the gate navigates away), then the Future
+    // resolves into an already-disposed State. _code.clear() sits between
+    // the two try blocks in _useRecoveryCode and must not touch the
+    // disposed controller.
+    final pending = Completer<void>();
+    when(() => recovery.redeem(any())).thenAnswer((_) => pending.future);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byType(TextFormField), 'AAAAA-BBBBB-CCCCC-DDDDD');
+    await tester.tap(find.text('Use code'));
+    await tester.pump();
+
+    // Replace the whole tree while redeem() is still pending: this unmounts
+    // MfaChallengeScreen's State and disposes its TextEditingController.
+    await tester.pumpWidget(const SizedBox());
+
+    pending.complete();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 }
