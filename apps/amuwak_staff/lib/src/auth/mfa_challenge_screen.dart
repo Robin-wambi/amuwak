@@ -34,6 +34,7 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
   Factor? _factor;
   bool _busy = false;
   String? _error;
+  bool _recoveryMode = false;
 
   @override
   void initState() {
@@ -84,6 +85,29 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
           .submitCode(factorId: factor.id, code: _code.text.trim());
     } catch (e) {
       if (mounted) setState(() => _error = codeSubmitMessage(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Spend a recovery code. On success the factor is gone, so the session must
+  /// be refreshed before the gate will notice — the assurance level is computed
+  /// from factors cached on the session user, not re-fetched.
+  Future<void> _useRecoveryCode() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(recoveryCodesServiceProvider).redeem(_code.text.trim());
+      await ref.read(authServiceProvider).refreshSession();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e is AuthFailure
+            ? e.message
+            : 'Could not use that recovery code. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -190,6 +214,29 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
   List<Widget> _stageContent(ThemeData theme) {
     switch (_load) {
       case _FactorLoad.ready:
+        if (_recoveryMode) {
+          return [
+            Text(
+              'Enter one of the recovery codes you saved when you set up '
+              'two-factor. Using one switches two-factor off until you set it '
+              'up again.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Form(
+              key: _formKey,
+              child: TextFormField(
+                controller: _code,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Recovery code'),
+                validator: (v) => (v ?? '').trim().isEmpty
+                    ? 'Enter a recovery code'
+                    : null,
+              ),
+            ),
+          ];
+        }
         return [
           Text(
             'Enter the current 6-digit code from your authenticator app.',
@@ -244,13 +291,26 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
       case _FactorLoad.ready:
         return [
           FilledButton(
-            onPressed: _busy ? null : _verify,
+            onPressed:
+                _busy ? null : (_recoveryMode ? _useRecoveryCode : _verify),
             child: _busy
                 ? const SizedBox(
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Verify'),
+                : Text(_recoveryMode ? 'Use code' : 'Verify'),
+          ),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                      _recoveryMode = !_recoveryMode;
+                      _code.clear();
+                      _error = null;
+                    }),
+            child: Text(_recoveryMode
+                ? 'Use my authenticator instead'
+                : 'Use a recovery code'),
           ),
         ];
       case _FactorLoad.failed:

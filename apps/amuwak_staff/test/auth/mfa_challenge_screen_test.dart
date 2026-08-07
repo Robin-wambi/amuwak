@@ -19,6 +19,8 @@ class _MockAuthService extends Mock implements AuthService {}
 
 class _MockOrchestrator extends Mock implements SyncOrchestrator {}
 
+class _MockRecovery extends Mock implements RecoveryCodesService {}
+
 Factor _verified(String id) => Factor(
       id: id,
       status: FactorStatus.verified,
@@ -33,6 +35,7 @@ void main() {
   late _MockAuthService auth;
   late AppDatabase db;
   late _MockOrchestrator orchestrator;
+  late _MockRecovery recovery;
 
   setUp(() {
     mfa = _MockMfa();
@@ -44,6 +47,7 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     orchestrator = _MockOrchestrator();
     when(() => orchestrator.stop()).thenAnswer((_) async {});
+    recovery = _MockRecovery();
   });
 
   tearDown(() async => db.close());
@@ -54,6 +58,7 @@ void main() {
           authServiceProvider.overrideWithValue(auth),
           appDatabaseProvider.overrideWithValue(db),
           syncOrchestratorProvider.overrideWithValue(orchestrator),
+          recoveryCodesServiceProvider.overrideWithValue(recovery),
         ],
         child: MaterialApp(
             theme: buildAmuwakTheme(), home: const MfaChallengeScreen()),
@@ -286,5 +291,58 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Could not sign out'), findsOneWidget);
+  });
+
+  testWidgets('a recovery code gets a locked-out user back in', (tester) async {
+    // The whole point: no manager, no Supabase dashboard.
+    when(() => recovery.redeem(any())).thenAnswer((_) async {});
+    when(() => auth.refreshSession()).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), 'AAAAA-BBBBB-CCCCC-DDDDD');
+    await tester.tap(find.text('Use code'));
+    await tester.pumpAndSettle();
+
+    verify(() => recovery.redeem('AAAAA-BBBBB-CCCCC-DDDDD')).called(1);
+    // Without the refresh the gate never notices: the assurance level is read
+    // from factors cached on the session user.
+    verify(() => auth.refreshSession()).called(1);
+  });
+
+  testWidgets('a rejected recovery code keeps the field usable',
+      (tester) async {
+    when(() => recovery.redeem(any()))
+        .thenThrow(AuthFailure('That recovery code is not valid.'));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'NOPE1-NOPE2-NOPE3-NOPE4');
+    await tester.tap(find.text('Use code'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('not valid'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNotNull);
+  });
+
+  testWidgets('can go back to the authenticator code', (tester) async {
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verify'), findsNothing);
+
+    await tester.tap(find.text('Use my authenticator instead'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verify'), findsOneWidget);
   });
 }
