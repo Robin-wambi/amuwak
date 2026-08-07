@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Amuwak Staff App — Training Guide</title>
+<style>
+  :root{
+    --orange:#FF6E11;
+    --terracotta:#C75A0E;
+    --dark:#1F1F1F;
+    --bg:#FFF8F2;
+    --ink:#222;
+    --muted:#6b6b6b;
+    --line:#e7d8cb;
+    --pending:#E69500;
+    --progress:#2563EB;
+    --ready:#0F9D8C;
+    --done:#2E9E4F;
+  }
+  @page { size: A4; margin: 16mm 14mm; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color:var(--ink); font-size:11.5pt; line-height:1.5;
+    background:#fff;
+  }
+  h1,h2,h3,h4{ color:var(--dark); line-height:1.2; }
+  h2{ font-size:20pt; margin:0 0 4px; }
+  h3{ font-size:14pt; margin:22px 0 6px; color:var(--terracotta); }
+  h4{ font-size:11.5pt; margin:14px 0 4px; }
+  p{ margin:6px 0; }
+  a{ color:var(--terracotta); }
+  .muted{ color:var(--muted); }
+  .small{ font-size:9.5pt; }
+  code, .kbd{
+    background:#fbeee2; border:1px solid var(--line); border-radius:5px;
+    padding:0 5px; font-family:"Consolas",monospace; font-size:9.5pt; color:var(--terracotta);
+    white-space:nowrap;
+  }
+  .section{ page-break-before: always; }
+  .section-head{
+    display:flex; align-items:center; gap:12px; border-bottom:3px solid var(--orange);
+    padding-bottom:8px; margin-bottom:6px;
+  }
+  .secnum{
+    background:var(--orange); color:#fff; font-weight:700; font-size:15pt;
+    width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    flex:0 0 auto;
+  }
+
+  /* ---------- Cover ---------- */
+  .cover{
+    height:265mm; background:linear-gradient(150deg,var(--orange),var(--terracotta));
+    color:#fff; border-radius:14px; padding:34px; display:flex; flex-direction:column;
+    position:relative; overflow:hidden;
+  }
+  .cover::after{
+    content:""; position:absolute; right:-90px; bottom:-120px; width:360px; height:360px;
+    background:rgba(255,255,255,.10); border-radius:50%;
+  }
+  .cover::before{
+    content:""; position:absolute; right:60px; top:-110px; width:240px; height:240px;
+    background:rgba(255,255,255,.08); border-radius:50%;
+  }
+  .logo{ display:flex; align-items:center; gap:14px; z-index:2; }
+  .logo .mark{
+    width:58px; height:58px; background:#fff; border-radius:16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .logo .name{ font-size:20pt; font-weight:800; letter-spacing:.5px; }
+  .cover .spacer{ flex:1; }
+  .cover h1{ color:#fff; font-size:40pt; margin:0; line-height:1.05; z-index:2; }
+  .cover .sub{ font-size:15pt; opacity:.95; margin-top:10px; z-index:2; max-width:420px; }
+  .cover .meta{ z-index:2; margin-top:24px; font-size:10.5pt; opacity:.9; }
+  .cover .pill{
+    display:inline-block; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.5);
+    padding:5px 12px; border-radius:999px; font-size:10pt; margin-top:18px; z-index:2;
+  }
+
+  /* ---------- TOC ---------- */
+  .toc{ list-style:none; padding:0; margin:14px 0; }
+  .toc li{ display:flex; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px dotted var(--line); }
+  .toc .n{ color:var(--orange); font-weight:700; width:26px; flex:0 0 auto; }
+  .toc .t{ font-weight:600; }
+  .toc .d{ color:var(--muted); font-size:9.5pt; }
+
+  /* ---------- Callouts ---------- */
+  .callout{ border-radius:10px; padding:11px 14px; margin:12px 0; border:1px solid; font-size:10.5pt; }
+  .tip{ background:#eaf7ee; border-color:#bfe3c8; }
+  .warn{ background:#fff3df; border-color:#f3d39a; }
+  .soon{ background:#fff1e6; border-color:#ffc59a; border-style:dashed; }
+  .callout b{ display:block; margin-bottom:2px; }
+  .callout .ico{ font-size:13pt; }
+
+  /* ---------- Steps ---------- */
+  ol.steps{ counter-reset:s; list-style:none; padding-left:0; margin:8px 0; }
+  ol.steps>li{
+    counter-increment:s; position:relative; padding:6px 0 6px 38px; margin:4px 0;
+    border-bottom:1px dotted var(--line);
+  }
+  ol.steps>li::before{
+    content:counter(s); position:absolute; left:0; top:5px;
+    width:25px; height:25px; background:var(--terracotta); color:#fff; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:10pt; font-weight:700;
+  }
+  ol.steps>li b{ color:var(--dark); }
+
+  /* ---------- Layout helpers ---------- */
+  .row{ display:flex; gap:20px; align-items:flex-start; }
+  .col{ flex:1; }
+  .center{ text-align:center; }
+
+  /* ---------- Phone mockup ---------- */
+  .phone{
+    width:225px; background:var(--dark); border-radius:26px; padding:9px;
+    flex:0 0 auto; box-shadow:0 6px 16px rgba(0,0,0,.18);
+  }
+  .phone .notch{ height:6px; width:70px; background:#444; border-radius:6px; margin:2px auto 6px; }
+  .phone .screen{ background:var(--bg); border-radius:16px; overflow:hidden; }
+  .pbar{ background:var(--orange); color:#fff; font-weight:700; font-size:9.5pt; padding:9px 11px; display:flex; align-items:center; gap:7px; }
+  .pbar .sp{ flex:1; }
+  .pbody{ padding:10px; font-size:8.6pt; }
+  .pcard{ background:#fff; border:1px solid var(--line); border-radius:9px; padding:8px; margin:6px 0; }
+  .pfield{ background:#fff; border:1px solid var(--line); border-radius:7px; padding:6px 8px; margin:5px 0; color:#9a8c80; }
+  .pfield.filled{ color:var(--ink); }
+  .pbtn{ background:var(--orange); color:#fff; text-align:center; padding:7px; border-radius:8px; font-weight:700; margin-top:6px; font-size:8.8pt; }
+  .pbtn.ghost{ background:#fff; color:var(--terracotta); border:1px solid var(--orange); }
+  .pchip{ display:inline-block; background:#fff; border:1px solid var(--orange); color:var(--terracotta); border-radius:999px; padding:2px 8px; font-size:8pt; margin:2px 3px 2px 0; }
+  .pchip.on{ background:var(--orange); color:#fff; }
+  .ptot{ background:#fff; border:1px solid var(--line); border-radius:9px; padding:8px; margin:6px 0; display:flex; justify-content:space-between; align-items:center; }
+  .ptot .amt{ font-size:13pt; font-weight:800; color:var(--dark); }
+  .badge{ display:inline-block; font-size:7.5pt; padding:1px 7px; border-radius:999px; color:#fff; }
+  .pthumb{ display:inline-block; width:34px; height:34px; border-radius:6px; background:#f0e2d6; border:1px solid var(--line); margin:2px; text-align:center; line-height:34px; }
+  .pnav{ display:flex; border-top:1px solid var(--line); background:#fff; }
+  .pnav div{ flex:1; text-align:center; font-size:7.4pt; padding:5px 0; color:#a89; }
+  .pnav div.on{ color:var(--orange); font-weight:700; }
+  .qrbox{ width:78px; height:78px; margin:6px auto; background:
+      repeating-linear-gradient(90deg,#1f1f1f 0 6px,#fff 6px 12px),
+      repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0 6px,transparent 6px 12px);
+      border:3px solid #1f1f1f; border-radius:6px; }
+  .figcap{ font-size:9pt; color:var(--muted); text-align:center; margin-top:6px; }
+
+  /* ---------- Status flow ---------- */
+  .flow{ display:flex; align-items:stretch; gap:0; margin:14px 0; }
+  .fnode{ flex:1; text-align:center; border-radius:10px; color:#fff; padding:10px 6px; position:relative; }
+  .farrow{ width:26px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:16pt; flex:0 0 auto; }
+  .fnode .ft{ font-weight:700; font-size:10pt; display:block; }
+  .fnode .fa{ font-size:8.5pt; opacity:.95; display:block; margin-top:2px; }
+
+  /* ---------- Tables ---------- */
+  table{ border-collapse:collapse; width:100%; margin:10px 0; font-size:10pt; }
+  th,td{ border:1px solid var(--line); padding:7px 9px; text-align:left; vertical-align:top; }
+  th{ background:#fbeee2; color:var(--terracotta); }
+  tr:nth-child(even) td{ background:#fffaf5; }
+
+  /* ---------- Pricing formula ---------- */
+  .formula{ background:#fff; border:2px solid var(--orange); border-radius:12px; padding:14px; text-align:center; margin:14px 0; }
+  .formula .eq{ font-size:13pt; font-weight:700; color:var(--dark); }
+  .formula .op{ color:var(--orange); margin:0 6px; }
+  .formula .term{ display:inline-block; background:#fff1e6; border:1px solid var(--line); border-radius:8px; padding:3px 9px; margin:3px; }
+
+  .icon-grid{ display:flex; flex-wrap:wrap; gap:10px; margin:10px 0; }
+  .icard{ flex:1 1 30%; min-width:150px; border:1px solid var(--line); border-radius:10px; padding:10px; background:#fffaf5; }
+  .icard .h{ font-weight:700; color:var(--terracotta); }
+  .lead{ font-size:12.5pt; color:#444; }
+  .qref{ border:2px dashed var(--orange); border-radius:12px; padding:14px; background:#fffaf5; }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<div class="cover">
+  <div class="logo">
+    <div class="mark">
+      <svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 2C8 7 5 10.5 5 14.5A7 7 0 0 0 19 14.5C19 10.5 16 7 12 2Z" fill="#FF6E11"/><circle cx="9.5" cy="14" r="1.6" fill="#fff"/></svg>
+    </div>
+    <div class="name">AMUWAK</div>
+  </div>
+  <div class="spacer"></div>
+  <h1>Staff App<br>Training Guide</h1>
+  <div class="sub">How to run laundry pickups, pricing and deliveries — step by step, on your phone.</div>
+  <div class="pill">For riders &amp; shop staff</div>
+  <div class="meta">Field Operations · Version 1.0 · June 2026</div>
+</div>
+
+<!-- ===================== TOC ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">≡</div><div><h2>What's inside</h2><div class="muted small">Read it top to bottom for onboarding, or jump to the part you need.</div></div></div>
+  <ol class="toc" style="counter-reset:none;">
+    <li><span class="n">1</span><span><span class="t">Welcome &amp; the basics</span> — <span class="d">what the app is for and the golden rule</span></span></li>
+    <li><span class="n">2</span><span><span class="t">Signing in</span> — <span class="d">username &amp; PIN</span></span></li>
+    <li><span class="n">3</span><span><span class="t">Your dashboard</span> — <span class="d">the four tabs and quick actions</span></span></li>
+    <li><span class="n">4</span><span><span class="t">The order journey</span> — <span class="d">the four stages every order moves through</span></span></li>
+    <li><span class="n">5</span><span><span class="t">Step 1 — Create a new pickup</span></span></li>
+    <li><span class="n">6</span><span><span class="t">Step 2 — Confirm the pickup &amp; tag the bag</span></span></li>
+    <li><span class="n">7</span><span><span class="t">Pricing made simple</span> — <span class="d">weight, rate, special items, settings</span></span></li>
+    <li><span class="n">8</span><span><span class="t">Managing an order</span> — <span class="d">order details &amp; moving the status</span></span></li>
+    <li><span class="n">9</span><span><span class="t">Step 3 — Hand over (delivery)</span></span></li>
+    <li><span class="n">10</span><span><span class="t">Everyday tools</span> — <span class="d">search, notifications, daily report, account</span></span></li>
+    <li><span class="n">11</span><span><span class="t">When something goes wrong</span> — <span class="d">common messages &amp; what to do</span></span></li>
+    <li><span class="n">12</span><span><span class="t">Coming soon</span> — <span class="d">what we're improving next</span></span></li>
+    <li><span class="n">13</span><span><span class="t">Quick reference card</span> — <span class="d">one page to keep handy</span></span></li>
+  </ol>
+</div>
+
+<!-- ===================== 1. WELCOME ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">1</div><div><h2>Welcome &amp; the basics</h2><div class="muted small">Five minutes that make everything else easier.</div></div></div>
+
+  <p class="lead">The Amuwak Staff app is your tool in the field. You use it to <b>pick up laundry from customers, price it, track it through the shop, and hand it back</b> — all from your phone.</p>
+
+  <h3>Who this app is for</h3>
+  <p>This is a <b>staff &amp; rider tool</b>, not the customer's app. You operate it <b>on behalf of the customer</b> — you enter their details, take the photos, and confirm pickups and deliveries with them in person.</p>
+
+  <div class="icon-grid">
+    <div class="icard"><div class="h">📦 Pickups</div>Create an order, weigh and photograph the laundry, and tag the bag.</div>
+    <div class="icard"><div class="h">💵 Pricing</div>The app prices each order automatically from weight × rate, plus any special items.</div>
+    <div class="icard"><div class="h">🚪 Deliveries</div>Photograph the hand-over and mark the order complete.</div>
+  </div>
+
+  <div class="callout tip"><b><span class="ico">💡</span> The golden rule</b>Always confirm with the customer <b>before</b> you tap the final button — the item count, the bag tag at pickup, and the hand-over at delivery. The photos you take are the shop's proof.</div>
+
+  <h3>Before you start your shift</h3>
+  <ul>
+    <li>Make sure your phone has <b>internet</b> — the app needs a connection to load and save orders.</li>
+    <li>Allow <b>Camera</b> and <b>Location</b> permissions when asked (you'll need them for photos and addresses).</li>
+    <li>Have your <b>username</b> and <b>PIN</b> ready (your supervisor sets these up).</li>
+  </ul>
+</div>
+
+<!-- ===================== 2. SIGNING IN ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">2</div><div><h2>Signing in</h2><div class="muted small">Start of every shift.</div></div></div>
+
+  <div class="row">
+    <div class="col">
+      <ol class="steps">
+        <li>Open the app. You'll see the <b>Amuwak Staff</b> login screen.</li>
+        <li>Type your <b>Username</b>.</li>
+        <li>Type your <b>PIN</b> (it stays hidden as you type).</li>
+        <li>Tap <b>Login</b>. The button shows a spinner while it checks.</li>
+      </ol>
+      <p class="small muted">If a field is empty you'll see <code>Enter your username</code> or <code>Enter your PIN</code>. If the username or PIN is wrong, a red message appears under the PIN box — check and try again.</p>
+
+      <div class="callout warn"><b><span class="ico">⚠️</span> Keep your PIN private</b>Never share your PIN. At the end of your shift, <b>sign out</b> from the Account tab (Section 10) so nobody else can use your login.</div>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="pbar"><span>🧺</span> Amuwak Staff</div>
+        <div class="pbody">
+          <div class="muted small">Login to manage laundry orders</div>
+          <div class="pfield filled">👤 &nbsp;Username</div>
+          <div class="pfield">🔒 &nbsp;PIN ••••</div>
+          <div class="pbtn">Login</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 3. DASHBOARD ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">3</div><div><h2>Your dashboard</h2><div class="muted small">Home base after you sign in.</div></div></div>
+
+  <div class="row">
+    <div class="col">
+      <p>The bottom of the screen has <b>four tabs</b>:</p>
+      <table>
+        <tr><th>Tab</th><th>What it's for</th></tr>
+        <tr><td><b>🏠 Home</b></td><td>Your day at a glance — counts, quick actions, and your assigned orders.</td></tr>
+        <tr><td><b>📋 Orders</b></td><td>The full list of orders as cards. Tap one to open it.</td></tr>
+        <tr><td><b>📊 Report</b></td><td>Today's totals and a status breakdown (Section 10).</td></tr>
+        <tr><td><b>👤 Account</b></td><td>Your profile, <b>Pricing settings</b>, and <b>Sign out</b>.</td></tr>
+      </table>
+
+      <h4>The Home tab shows</h4>
+      <ul>
+        <li>A welcome header — <b>“Staff Workspace · Today's laundry operations.”</b></li>
+        <li>Summary cards: <b>Assigned</b>, <b>Pending pickup</b>, <b>In progress</b>, <b>Ready for delivery</b>, and <b>Completed today</b>.</li>
+        <li>Three quick-action buttons: <b>New pickup</b>, <b>Check order</b>, <b>Report</b>.</li>
+        <li>Your <b>Assigned orders</b> list.</li>
+      </ul>
+      <p class="small muted">The 🔔 bell at the top-right opens <b>Notifications</b> and shows a badge with how many pickups are waiting.</p>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="pbar"><span>Amuwak Staff</span><span class="sp"></span><span>🔔²</span></div>
+        <div class="pbody">
+          <div class="pcard"><div class="muted small">Welcome back</div><b>Staff Workspace</b><div class="muted small">Today's laundry operations</div></div>
+          <div class="row" style="gap:6px;">
+            <div class="pcard col center"><b style="font-size:13pt;color:var(--orange)">3</b><div class="small muted">Pending pickup</div></div>
+            <div class="pcard col center"><b style="font-size:13pt;color:var(--orange)">2</b><div class="small muted">In progress</div></div>
+          </div>
+          <div class="pbtn ghost">＋ New pickup</div>
+          <div class="pbtn ghost">🔎 Check order</div>
+        </div>
+        <div class="pnav"><div class="on">🏠 Home</div><div>📋 Orders</div><div>📊 Report</div><div>👤 Account</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 4. ORDER JOURNEY ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">4</div><div><h2>The order journey</h2><div class="muted small">Every order moves through these four stages, in order.</div></div></div>
+
+  <div class="flow">
+    <div class="fnode" style="background:var(--pending)"><span class="ft">Pending pickup</span><span class="fa">Order created, not yet collected</span></div>
+    <div class="farrow">➜</div>
+    <div class="fnode" style="background:var(--progress)"><span class="ft">In progress</span><span class="fa">Collected &amp; in the shop</span></div>
+    <div class="farrow">➜</div>
+    <div class="fnode" style="background:var(--ready)"><span class="ft">Ready for delivery</span><span class="fa">Clean &amp; ready to return</span></div>
+    <div class="farrow">➜</div>
+    <div class="fnode" style="background:var(--done)"><span class="ft">Completed</span><span class="fa">Handed back to customer</span></div>
+  </div>
+
+  <table>
+    <tr><th>Stage</th><th>What you do</th><th>Button you tap</th></tr>
+    <tr><td><b>Pending pickup</b></td><td>Go to the customer, confirm the laundry, take photos, tag the bag.</td><td><code>Confirm pickup</code></td></tr>
+    <tr><td><b>In progress</b></td><td>Laundry is in the shop. Once it's clean and finished, set the final weight.</td><td><code>Move to Ready for delivery</code></td></tr>
+    <tr><td><b>Ready for delivery</b></td><td>Take it back to the customer and photograph the hand-over.</td><td><code>Deliver</code></td></tr>
+    <tr><td><b>Completed</b></td><td>Done — nothing more to do. The button shows <code>Order completed</code>.</td><td>—</td></tr>
+  </table>
+
+  <div class="callout tip"><b><span class="ico">💡</span> Status always moves forward</b>An order goes one step at a time and never skips. If you can't find the button to advance, open the order from the <b>Orders</b> tab and check its current status chip.</div>
+</div>
+
+<!-- ===================== 5. NEW PICKUP ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">5</div><div><h2>Step 1 — Create a new pickup</h2><div class="muted small">From Home → <b>New pickup</b>.</div></div></div>
+
+  <div class="row">
+    <div class="col">
+      <ol class="steps">
+        <li>Tap <b>New pickup</b> on the Home tab.</li>
+        <li>Enter the <b>Customer name</b> and <b>Phone</b> (a 9-digit Ugandan number).</li>
+        <li>For the address, type it or tap <b>📍 Use my location</b> to fill it in automatically.</li>
+        <li>If the phone matches someone you've served before, a sheet pops up: <b>“Existing customer found.”</b> Tap <b>Use this customer</b> to reuse their details (and their agreed rate), or <b>Different customer</b>.</li>
+        <li>Pick the <b>Service type</b>: Wash &amp; Iron, Dry cleaning, Iron only, or Wash only.</li>
+        <li>Choose <b>Pickup now</b> or <b>Schedule for later</b> (then a chip like <b>In 1 hour</b> or <b>Tomorrow morning</b>).</li>
+        <li>The <b>Rate: USh …/kg</b> line shows the price per kg that will apply.</li>
+        <li><i>(Optional)</i> Tap <b>Add optional details</b> for item count, notes, or a <b>Custom rate</b> for this customer.</li>
+        <li>Tap <b>Create pickup</b>.</li>
+      </ol>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="pbar"><span>← New pickup</span></div>
+        <div class="pbody">
+          <div class="pfield filled">Customer name</div>
+          <div class="pfield filled">Phone &nbsp;+256 •••</div>
+          <div class="pchip">📍 Use my location</div>
+          <div class="pfield">Address</div>
+          <div class="small" style="color:var(--muted);margin:4px 0;">Rate: <b style="color:var(--dark)">USh 5,000</b>/kg</div>
+          <div class="pfield filled">Service type ▾</div>
+          <div><span class="pchip on">Pickup now</span><span class="pchip">Schedule</span></div>
+          <div class="pbtn">Create pickup</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warn"><b><span class="ico">⚠️</span> Before it lets you continue</b>You must fill <b>name</b>, a valid <b>9-digit phone</b>, <b>address</b>, and a <b>service type</b>. A custom rate, if you enter one, must be greater than 0. The <b>Create pickup</b> button stays greyed out until the form is complete.</div>
+  <div class="callout tip"><b><span class="ico">💡</span> Returning customers</b>Leaving the custom-rate box <b>blank</b> keeps the customer's previously agreed rate — it does <b>not</b> erase it.</div>
+</div>
+
+<!-- ===================== 6. PICKUP CAPTURE ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">6</div><div><h2>Step 2 — Confirm the pickup &amp; tag the bag</h2><div class="muted small">Opens after you create a pickup, or via <code>Confirm pickup</code> on the order.</div></div></div>
+
+  <div class="row">
+    <div class="col">
+      <p>This is the <b>“Confirm pickup”</b> screen. Do it <b>with the customer present</b>.</p>
+      <ol class="steps">
+        <li>Set <b>How many items?</b> using the − / + buttons.</li>
+        <li>Take <b>Photos (up to 3)</b> — tap <b>Add photo</b>. At least one photo is required.</li>
+        <li>Enter the <b>Estimated weight (kg)</b>.</li>
+        <li>Add any <b>Special items</b> (e.g. a blanket priced separately).</li>
+        <li>Check the <b>total</b> — it shows a <b>“Provisional”</b> tag until the final weight is set later.</li>
+        <li>Tap <b>Confirm with customer</b>.</li>
+        <li>On the <b>“Tag the bag”</b> screen, write the <b>order number</b> on the bag (or attach the QR), then tap <b>Done</b>.</li>
+      </ol>
+      <div class="callout tip"><b><span class="ico">💡</span> Good photos protect everyone</b>Capture the laundry clearly and include anything already stained or damaged. This is the shop's record of what was collected.</div>
+    </div>
+    <div class="col">
+      <div class="row" style="gap:12px;">
+        <div class="phone" style="width:200px;">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="pbar"><span>← Confirm pickup</span></div>
+            <div class="pbody">
+              <div class="small muted">How many items?</div>
+              <div class="center"><b style="font-size:14pt">− &nbsp; 4 &nbsp; +</b></div>
+              <div class="small muted" style="margin-top:4px;">Photos (1/3)</div>
+              <div><span class="pthumb">📷</span><span class="pthumb" style="border-style:dashed;color:var(--orange)">＋</span></div>
+              <div class="pfield filled">Estimated weight 3.0 kg</div>
+              <div class="ptot"><span>Total <span class="badge" style="background:var(--muted)">Provisional</span></span><span class="amt">USh 15,000</span></div>
+              <div class="pbtn">Confirm with customer</div>
+            </div>
+          </div>
+        </div>
+        <div class="phone" style="width:160px;">
+          <div class="notch"></div>
+          <div class="screen">
+            <div class="pbar"><span>Tag the bag</span></div>
+            <div class="pbody center">
+              <b>Tie tag to the bag</b>
+              <div class="qrbox"></div>
+              <div><b>AMW-2026-0001</b></div>
+              <div class="pbtn">Done</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="figcap">Left: confirm details &amp; photos. Right: tag the bag, then Done.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 7. PRICING ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">7</div><div><h2>Pricing made simple</h2><div class="muted small">The app does the maths — here's how it works.</div></div></div>
+
+  <p>Every order's total is worked out the same way:</p>
+  <div class="formula">
+    <div class="eq"><span class="term">Weight × Rate per kg</span><span class="op">+</span><span class="term">Special items</span><span class="op">+</span><span class="term">Adjustment</span></div>
+    <div class="small muted" style="margin-top:8px;">The total is never less than <b>USh 0</b>. Amounts show in shillings, e.g. <b>USh 15,000</b>.</div>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <h4>Provisional vs final</h4>
+      <p>At pickup you enter an <b>estimated weight</b>, so the total shows a <b>“Provisional”</b> tag. When the laundry is finished you set the <b>final weight</b> on the order — the tag disappears and the total is locked in.</p>
+
+      <h4>Which rate is used?</h4>
+      <p>The app picks the rate in this order:</p>
+      <ol class="steps">
+        <li>A <b>custom rate</b> you typed for this order, if any.</li>
+        <li>The <b>customer's saved rate</b>, if they have one.</li>
+        <li>The shop's <b>default rate</b>.</li>
+      </ol>
+      <div class="callout tip"><b><span class="ico">💡</span> Frozen at creation</b>Each order remembers the rate it was created with. Changing the shop default later does <b>not</b> re-price old orders.</div>
+    </div>
+    <div class="col">
+      <h4>Editing pricing on an order</h4>
+      <p>Open the order → <b>Pricing</b> section. You can set:</p>
+      <ul>
+        <li><b>Final weight (kg)</b></li>
+        <li><b>Special items</b> (add/remove)</li>
+        <li><b>Manual adjustment (UGX, +/−)</b> — a discount (negative) or surcharge (positive)</li>
+      </ul>
+      <p>Then tap <b>Save pricing</b>. You'll see <b>“Pricing saved.”</b></p>
+
+      <h4>Setting the default rate</h4>
+      <p>Go to <b>Account → Pricing settings</b>, enter the <b>Default rate per kg (UGX)</b>, and tap <b>Save</b>. This is the rate used for new customers who don't have their own.</p>
+      <div class="callout warn"><b><span class="ico">⚠️</span> Handle the default with care</b>The default rate affects <b>every new order</b> for customers without a custom rate. Only change it when you're sure.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 8. ORDER DETAILS ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">8</div><div><h2>Managing an order</h2><div class="muted small">Tap any order card to open <b>Order details</b>.</div></div></div>
+
+  <div class="row">
+    <div class="col">
+      <p>The Order details screen shows everything about one order:</p>
+      <ul>
+        <li>A <b>status chip</b> (the order's current stage).</li>
+        <li><b>Customer</b> — name, phone, address.</li>
+        <li><b>Laundry details</b> — order code, service, items, time.</li>
+        <li><b>Pricing</b> — rate, weights, special items, adjustment, total, <b>Save pricing</b>.</li>
+        <li><b>Notes</b> and <b>History</b> (a log of what happened and when).</li>
+      </ul>
+      <p>The big button at the bottom changes with the stage:</p>
+      <table>
+        <tr><th>If the order is…</th><th>The button says…</th></tr>
+        <tr><td>Pending pickup</td><td><code>Confirm pickup</code></td></tr>
+        <tr><td>In progress</td><td><code>Move to Ready for delivery</code></td></tr>
+        <tr><td>Ready for delivery</td><td><code>Deliver</code></td></tr>
+        <tr><td>Completed</td><td><code>Order completed</code> (greyed out)</td></tr>
+      </table>
+      <p class="small muted">After advancing you'll see <b>“Order moved to …”</b>. If a save fails you'll see <b>“Could not save status change — please retry.”</b></p>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="pbar"><span>← Order details</span></div>
+        <div class="pbody">
+          <div class="pcard"><div class="muted small">AMW-2026-0001</div><b>Aisha N.</b> <span class="badge" style="background:var(--progress)">In progress</span><div class="muted small">Wash &amp; Iron</div></div>
+          <div class="pcard"><b>Pricing</b><div class="small muted">Rate: USh 5,000/kg</div>
+            <div class="pfield filled">Final weight 3.2 kg</div>
+            <div class="ptot"><span>Total</span><span class="amt">USh 16,000</span></div>
+            <div class="pbtn ghost">Save pricing</div>
+          </div>
+          <div class="pbtn">Move to Ready for delivery</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 9. DELIVERY ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">9</div><div><h2>Step 3 — Hand over (delivery)</h2><div class="muted small">When the order is <b>Ready for delivery</b>, tap <code>Deliver</code>.</div></div></div>
+
+  <div class="row">
+    <div class="col">
+      <p>This opens the <b>“Hand over”</b> screen.</p>
+      <ol class="steps">
+        <li>Check the <b>From pickup</b> card — it reminds you of the item count and how many pickup photos are on file.</li>
+        <li>Take <b>Handover photos (up to 3)</b> as the customer receives the laundry. At least one is required.</li>
+        <li>Add <b>Notes</b> if needed.</li>
+        <li>Tap <b>Mark delivered</b>. The order moves to <b>Completed</b>. 🎉</li>
+      </ol>
+      <div class="callout tip"><b><span class="ico">💡</span> Close the loop in person</b>Photograph the hand-over <b>while you're with the customer</b>. It confirms the laundry was returned.</div>
+    </div>
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="pbar"><span>← Hand over</span></div>
+        <div class="pbody">
+          <div class="pcard"><b>From pickup</b><div class="small muted">Pickup count: 4 · 2 photo(s) on file</div></div>
+          <div class="small muted">Handover photos (1/3)</div>
+          <div><span class="pthumb">📷</span><span class="pthumb" style="border-style:dashed;color:var(--orange)">＋</span></div>
+          <div class="pfield">Notes (optional)</div>
+          <div class="pbtn">Mark delivered</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 10. EVERYDAY TOOLS ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">10</div><div><h2>Everyday tools</h2><div class="muted small">Find orders, stay informed, and check your day.</div></div></div>
+
+  <h3>🔎 Search &amp; scan</h3>
+  <p>From Home tap <b>Check order</b>. Search by <b>code, name, phone, or address</b> in the box, or tap the <b>scan</b> icon to read a bag's QR tag. If nothing matches you'll see <b>“No orders found.”</b></p>
+
+  <h3>🔔 Notifications</h3>
+  <p>The bell (top-right of the dashboard) lists recent activity — <b>New pickups</b> waiting and orders <b>Delivered in the last 48h</b> — with the order code, customer, status and time. The badge number tells you how many pickups need attention.</p>
+
+  <h3>📊 Daily report</h3>
+  <p>The <b>Report</b> tab summarises your day: <b>Orders</b>, <b>Items</b>, <b>Completed</b>, and <b>Pending work</b>, plus a <b>Status breakdown</b> bar for each stage. At the bottom: <b>“Total items handled today.”</b></p>
+
+  <h3>👤 Account &amp; sign out</h3>
+  <p>The <b>Account</b> tab shows your staff profile, a shortcut to <b>Pricing settings</b>, and the <b>Sign out</b> button. Signing out asks <b>“Sign out of this device?”</b> — tap <b>Sign out</b> to confirm. <b>Always sign out at the end of your shift.</b></p>
+
+  <div class="icon-grid">
+    <div class="icard"><div class="h">🔎 Check order</div>Find any order fast — code, name, phone, address, or QR scan.</div>
+    <div class="icard"><div class="h">🔔 Notifications</div>See pending pickups and recent deliveries at a glance.</div>
+    <div class="icard"><div class="h">📊 Report</div>Know how many orders and items you've handled today.</div>
+  </div>
+</div>
+
+<!-- ===================== 11. TROUBLESHOOTING ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">11</div><div><h2>When something goes wrong</h2><div class="muted small">Common messages and what to do.</div></div></div>
+
+  <table>
+    <tr><th>You see…</th><th>What it means &amp; what to do</th></tr>
+    <tr><td><code>Could not load orders. Please try again.</code></td><td>The app couldn't reach the server. Check your internet, then tap <b>Retry</b>. If it persists, tell your supervisor.</td></tr>
+    <tr><td><code>Could not reserve an order number…</code></td><td>Connection blip while creating the order. Check signal and tap <b>Create pickup</b> again — it won't create a duplicate.</td></tr>
+    <tr><td><code>Customer was saved, but the order could not be saved.</code></td><td>The customer saved but the order didn't. Tap <b>Create pickup</b> again to finish it.</td></tr>
+    <tr><td><code>Camera permission denied…</code></td><td>Enable Camera for the app in your phone's Settings, then take the photo again.</td></tr>
+    <tr><td><code>Could not determine address…</code></td><td>Location lookup failed — just type the address by hand.</td></tr>
+    <tr><td><code>Pickup confirmed, but pricing wasn't saved…</code></td><td>Pickup is done, but weight/items didn't save. Open the order and add them in the <b>Pricing</b> section.</td></tr>
+    <tr><td><code>Session expired — please sign in again.</code></td><td>You've been signed out for safety. Log in again to continue.</td></tr>
+    <tr><td><code>Pricing settings missing — contact admin.</code></td><td>The shop's default rate isn't set up. Tell your supervisor/admin.</td></tr>
+  </table>
+
+  <div class="callout tip"><b><span class="ico">💡</span> When in doubt</b>Most problems are connection-related. Move to better signal and retry — the app is built to let you tap the same button again safely without creating duplicates.</div>
+</div>
+
+<!-- ===================== 12. COMING SOON ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">12</div><div><h2>Coming soon</h2><div class="muted small">What we're planning to improve. These are <b>not yet in the app</b>.</div></div></div>
+
+  <p>We're actively improving Amuwak. Here's what's on the roadmap so you know what to expect:</p>
+
+  <div class="callout soon"><b><span class="ico">🔜</span> Work offline, sync later</b>Today the app needs internet to load and save. We're bringing back <b>offline mode</b> so you can create pickups and capture proof with no signal — and the app syncs automatically once you're back online.</div>
+
+  <div class="callout soon"><b><span class="ico">🔜</span> Role-based permissions</b>Right now any signed-in staff member can change the shop's <b>default rate</b>. We plan to restrict pricing settings to <b>managers</b> only.</div>
+
+  <div class="callout soon"><b><span class="ico">🔜</span> A dedicated intake screen</b>Final weight is currently entered on the Order details screen. A purpose-built <b>intake step</b> will make weighing finished laundry faster and clearer.</div>
+
+  <div class="callout soon"><b><span class="ico">🔜</span> Manage customer rates anytime</b>A per-customer rate can currently only be set while creating a pickup. We're adding a place to <b>view and edit a customer's agreed rate</b> at any time.</div>
+
+  <div class="callout soon"><b><span class="ico">🔜</span> Live updates &amp; richer reports</b>Lists will refresh <b>instantly</b> when anything changes, and the daily report will grow into fuller <b>history and analytics</b> across days and staff.</div>
+
+  <p class="small muted">Have an idea or hit a snag? Tell your supervisor — field feedback shapes what we build next.</p>
+</div>
+
+<!-- ===================== 13. QUICK REFERENCE ===================== -->
+<div class="section">
+  <div class="section-head"><div class="secnum">13</div><div><h2>Quick reference card</h2><div class="muted small">The whole daily flow on one page — keep it handy.</div></div></div>
+
+  <div class="qref">
+    <div class="flow" style="margin-top:0;">
+      <div class="fnode" style="background:var(--pending)"><span class="ft">1 · Pending pickup</span><span class="fa">Create &amp; Confirm pickup</span></div>
+      <div class="farrow">➜</div>
+      <div class="fnode" style="background:var(--progress)"><span class="ft">2 · In progress</span><span class="fa">Set final weight</span></div>
+      <div class="farrow">➜</div>
+      <div class="fnode" style="background:var(--ready)"><span class="ft">3 · Ready</span><span class="fa">Deliver</span></div>
+      <div class="farrow">➜</div>
+      <div class="fnode" style="background:var(--done)"><span class="ft">4 · Completed</span><span class="fa">Done ✅</span></div>
+    </div>
+
+    <div class="row" style="margin-top:6px;">
+      <div class="col">
+        <h4>Create a pickup</h4>
+        <ol class="steps">
+          <li>Home → <b>New pickup</b></li>
+          <li>Name, phone, address (📍 or type)</li>
+          <li>Service type + now/schedule</li>
+          <li><b>Create pickup</b></li>
+        </ol>
+        <h4>Confirm pickup</h4>
+        <ol class="steps">
+          <li>Item count + <b>photo</b></li>
+          <li>Estimated weight + special items</li>
+          <li><b>Confirm with customer</b> → tag bag → <b>Done</b></li>
+        </ol>
+      </div>
+      <div class="col">
+        <h4>Finish &amp; deliver</h4>
+        <ol class="steps">
+          <li>Open order → set <b>Final weight</b> → <b>Save pricing</b></li>
+          <li><b>Move to Ready for delivery</b></li>
+          <li><b>Deliver</b> → handover photo → <b>Mark delivered</b></li>
+        </ol>
+        <h4>Pricing in one line</h4>
+        <div class="formula" style="margin:6px 0;padding:9px;">
+          <div class="eq" style="font-size:11pt;">Weight × Rate <span class="op">+</span> Special items <span class="op">+</span> Adjustment</div>
+        </div>
+        <div class="callout tip" style="margin:6px 0;"><b>Remember</b>Confirm with the customer before the final tap. Take clear photos. Sign out after your shift.</div>
+      </div>
+    </div>
+  </div>
+  <p class="center small muted" style="margin-top:14px;">Amuwak Staff App · Field Operations Training Guide · v1.0 · June 2026</p>
+</div>
+
+</body>
+</html>
