@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_staff/src/auth/mfa_enrolment_screen.dart';
+import 'package:amuwak_staff/src/auth/recovery_codes_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _MockMfa extends Mock implements MfaService {}
+
+class _MockRecovery extends Mock implements RecoveryCodesService {}
 
 const _enrolment = TotpEnrolment(
   factorId: 'factor-1',
@@ -28,6 +31,7 @@ Factor _verified(String id) => Factor(
 
 void main() {
   late _MockMfa mfa;
+  late _MockRecovery recovery;
   int completed = 0;
   bool? lastEnabled;
 
@@ -37,10 +41,16 @@ void main() {
     lastEnabled = null;
     // Default: nothing enrolled yet, so the screen goes straight to setup.
     when(() => mfa.verifiedFactors()).thenAnswer((_) async => <Factor>[]);
+    recovery = _MockRecovery();
+    when(() => recovery.generate())
+        .thenAnswer((_) async => ['AAAAA-BBBBB-CCCCC-DDDDD']);
   });
 
   Widget harness() => ProviderScope(
-        overrides: [mfaServiceProvider.overrideWithValue(mfa)],
+        overrides: [
+          mfaServiceProvider.overrideWithValue(mfa),
+          recoveryCodesServiceProvider.overrideWithValue(recovery),
+        ],
         child: MaterialApp(
           theme: buildAmuwakTheme(),
           home: MfaEnrolmentScreen(onCompleted: ({required enabled}) {
@@ -110,6 +120,11 @@ void main() {
 
     verify(() => mfa.submitCode(factorId: 'factor-1', code: '123456'))
         .called(1);
+    // Completion now waits on the recovery-codes handoff — see "hands over
+    // the recovery codes before reporting success" below.
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+
     expect(completed, 1);
     expect(lastEnabled, isTrue);
   });
@@ -251,5 +266,31 @@ void main() {
     await tester.pumpAndSettle();
     verify(() => mfa.submitCode(
         factorId: any(named: 'factorId'), code: any(named: 'code'))).called(1);
+  });
+
+  testWidgets('hands over the recovery codes before reporting success',
+      (tester) async {
+    // Enrolling without codes creates exactly the lockout this feature exists
+    // to prevent, so completion waits until the user has them.
+    stubEnroll();
+    when(() => mfa.submitCode(
+        factorId: any(named: 'factorId'),
+        code: any(named: 'code'))).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    expect(completed, 0, reason: 'not done until the codes are acknowledged');
+
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+
+    expect(completed, 1);
+    expect(lastEnabled, isTrue);
   });
 }

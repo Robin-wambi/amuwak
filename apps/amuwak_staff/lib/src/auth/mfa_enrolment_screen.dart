@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'mfa_error_text.dart';
+import 'recovery_codes_screen.dart';
 
 /// Reports whether two-factor is on after this screen finished with it.
 typedef MfaChangedFn = void Function({required bool enabled});
@@ -165,7 +166,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
       await ref
           .read(mfaServiceProvider)
           .submitCode(factorId: enrolment.factorId, code: _code.text.trim());
-      if (mounted) widget.onCompleted(enabled: true);
+      if (mounted) await _handOverRecoveryCodes();
     } catch (e) {
       // Codes rotate every 30 seconds, so a stale or mistyped code is the
       // ordinary case rather than an exceptional one. Keep the field ready.
@@ -173,6 +174,20 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// The factor is live but the user has no way back in if they lose it. Hand
+  /// over the recovery codes before declaring success — this is the only moment
+  /// the plaintext exists.
+  Future<void> _handOverRecoveryCodes() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (routeContext) => RecoveryCodesScreen(
+          onAcknowledged: () => Navigator.of(routeContext).pop(),
+        ),
+      ),
+    );
+    if (mounted) widget.onCompleted(enabled: true);
   }
 
   @override
