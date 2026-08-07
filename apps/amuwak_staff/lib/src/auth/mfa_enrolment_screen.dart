@@ -286,14 +286,25 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   /// Deliberately does NOT call [MfaEnrolmentScreen.onCompleted]: unlike
   /// [_turnOff], two-factor stays on, so reporting completion would close this
   /// screen and tell the dashboard the state had changed when it has not.
+  ///
+  /// Guarded by `_busy` like every other action on this screen — without it,
+  /// two taps before the first frame rebuild both push a
+  /// [RecoveryCodesScreen]: the second mints a fresh set that deletes the
+  /// first's server-side, so acknowledging the first (now-stale) screen and
+  /// popping back to it leaves the user looking at codes that no longer work.
   Future<void> _replaceRecoveryCodes() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (routeContext) => RecoveryCodesScreen(
-          onAcknowledged: () => Navigator.of(routeContext).pop(),
+    setState(() => _busy = true);
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (routeContext) => RecoveryCodesScreen(
+            onAcknowledged: () => Navigator.of(routeContext).pop(),
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Widget _setupBody(ThemeData theme, TotpEnrolment enrolment) {

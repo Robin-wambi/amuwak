@@ -317,4 +317,25 @@ void main() {
     expect(completed, 0);
     expect(find.text('Turn off'), findsOneWidget);
   });
+
+  testWidgets('a rapid double tap on Replace recovery codes only pushes one '
+      'screen', (tester) async {
+    // Without a real _busy guard, two taps delivered before the first frame
+    // rebuild both push a RecoveryCodesScreen. The second mint deletes the
+    // first set server-side, so acknowledging the (now stale) first screen
+    // and popping back to a second, live one would show codes that already
+    // do not work.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Replace recovery codes'));
+    await tester.tap(find.text('Replace recovery codes'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    verify(() => recovery.generate()).called(1);
+  });
 }
