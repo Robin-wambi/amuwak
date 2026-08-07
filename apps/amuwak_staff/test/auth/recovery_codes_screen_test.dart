@@ -141,4 +141,68 @@ void main() {
 
     expect(find.text(_codes.first), findsOneWidget);
   });
+
+  testWidgets('a rapid double tap on Retry only mints once', (tester) async {
+    // Two RPC calls in flight from one double tap race: if the first
+    // response lands after the second, a naive setState would show codes
+    // the server has already replaced with a newer set (generate deletes
+    // the previous set server-side before minting the new one).
+    when(() => recovery.generate())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+    expect(find.text('Retry'), findsOneWidget);
+
+    final pending = Completer<List<String>>();
+    when(() => recovery.generate()).thenAnswer((_) => pending.future);
+
+    await tester.tap(find.text('Retry'));
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+
+    // One call from initState's original (failed) mint, plus exactly one
+    // more from the double tap — not two.
+    verify(() => recovery.generate()).called(2);
+
+    pending.complete(_codes);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the error state can be left via system back, unlike the '
+      'codes-shown state', (tester) async {
+    // canPop only protects the state where codes are actually on screen —
+    // an error has nothing to protect, so blocking the pop there would trap
+    // the user on a screen they cannot satisfy.
+    when(() => recovery.generate())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(dismissHarness());
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not create'), findsOneWidget);
+
+    final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+    await widgetsAppState.didPopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Recovery codes'), findsNothing);
+  });
+
+  testWidgets('the error state offers an explicit Close action',
+      (tester) async {
+    when(() => recovery.generate())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(dismissHarness());
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Recovery codes'), findsNothing);
+  });
 }

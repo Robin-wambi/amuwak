@@ -6,9 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Shows the recovery codes, once.
 ///
 /// This is the only moment the plaintext exists — the server keeps bcrypt
-/// hashes and cannot show them again. The screen therefore has no back
-/// affordance and no way out except acknowledging: a staff member who taps past
-/// it owns a two-factor account with no way back into it.
+/// hashes and cannot show them again. Once codes are actually on screen there
+/// is no way out except acknowledging: a staff member who taps past them owns
+/// a two-factor account with no way back into it. Before that — while minting
+/// is in progress, or if it failed — there is nothing on screen to protect,
+/// so the screen can be left (system back, or the error state's Close
+/// action).
 class RecoveryCodesScreen extends ConsumerStatefulWidget {
   const RecoveryCodesScreen({super.key, required this.onAcknowledged});
 
@@ -25,6 +28,16 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
   List<String>? _codes;
   String? _error;
   bool _busy = false;
+
+  // Guards _mint against re-entrancy, separate from _busy (which only guards
+  // acknowledgement). Checked synchronously, first thing, for the same reason
+  // _acknowledge below checks _busy synchronously: two taps on Retry
+  // delivered before a frame rebuilds would otherwise both reach a
+  // still-enabled button in the (stale) widget tree, firing generate() twice.
+  // If the second response lands before the first, the first response's
+  // setState would win last and show codes the server has already deleted
+  // (mint replaces the previous set server-side).
+  bool _minting = false;
 
   @override
   void initState() {
@@ -43,15 +56,21 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
   }
 
   Future<void> _mint() async {
+    if (_minting) return;
+    _minting = true;
     if (_error != null) setState(() => _error = null);
     try {
       final codes = await ref.read(recoveryCodesServiceProvider).generate();
       if (mounted) setState(() => _codes = codes);
     } catch (_) {
       if (mounted) {
-        setState(() =>
-            _error = 'Could not create recovery codes. Please try again.');
+        setState(() => _error =
+            'Could not create recovery codes. Please try again. Any '
+            'recovery codes you saved earlier may no longer work — '
+            'generate a fresh set.');
       }
+    } finally {
+      _minting = false;
     }
   }
 
@@ -59,8 +78,12 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return PopScope(
-      // No accidental exit: the codes are unrecoverable once this closes.
-      canPop: false,
+      // No accidental exit once codes are actually on screen — they are
+      // unrecoverable once this closes. Every other state (loading, or an
+      // error with nothing displayed yet) has nothing to protect, so a pop
+      // is allowed there: blocking it would trap the user with no way out
+      // of a state that has no codes to lose.
+      canPop: _codes == null,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Recovery codes'),
@@ -92,6 +115,15 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
               style: TextStyle(color: theme.colorScheme.error)),
           const SizedBox(height: AppSpacing.lg),
           FilledButton(onPressed: _mint, child: const Text('Retry')),
+          const SizedBox(height: AppSpacing.sm),
+          // There are no codes on screen to protect here, so unlike the
+          // success state below, this state must have a way out — the
+          // PopScope above already permits a system-back pop in this state;
+          // this is the explicit affordance for it.
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ],
       );
     }
