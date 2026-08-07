@@ -400,6 +400,24 @@ void main() {
   });
 
   testWidgets(
+      'the recovery-code field does not offer to autocorrect or autofill it',
+      (tester) async {
+    // This field carries a one-time credential. Without these settings,
+    // Android's soft keyboard learns the typed groups into its personalised
+    // dictionary — handing a secret to a third-party IME process.
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Use a recovery code'));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextFormField>(find.byType(TextFormField));
+    expect(field.autocorrect, isFalse);
+    expect(field.enableSuggestions, isFalse);
+    expect(field.autofillHints, isEmpty);
+  });
+
+  testWidgets(
       'a redeem that resolves after the screen is gone does not throw',
       (tester) async {
     // Reproduces disposal mid-flight: redeem() is still in flight when the

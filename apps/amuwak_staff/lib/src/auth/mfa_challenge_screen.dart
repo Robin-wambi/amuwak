@@ -255,6 +255,14 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
               child: TextFormField(
                 controller: _code,
                 autofocus: true,
+                // This field carries a one-time credential. Without these,
+                // Android's soft keyboard learns the typed groups into its
+                // personalised dictionary — handing a secret to a
+                // third-party IME process.
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
+                autofillHints: const [],
                 decoration: const InputDecoration(labelText: 'Recovery code'),
                 validator: (v) => (v ?? '').trim().isEmpty
                     ? 'Enter a recovery code'
