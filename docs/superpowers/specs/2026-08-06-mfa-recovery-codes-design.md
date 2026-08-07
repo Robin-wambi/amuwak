@@ -96,10 +96,12 @@ means the table is unreachable except through the two functions.
 
 ### Code format
 
-`extensions.gen_random_bytes(10)` — 80 bits — rendered as Crockford base32 and
-grouped for transcription: `XXXX-XXXX-XXXX-XXXX`. Ten codes per user.
-Redemption normalises input by stripping non-alphanumerics and upper-casing, so
-a user typing spaces, lowercase, or no dashes still succeeds.
+`extensions.gen_random_bytes(10)` — 80 bits — rendered as uppercase hex and
+grouped for transcription: `XXXXX-XXXXX-XXXXX-XXXXX` (deviates from the
+Crockford base32 `XXXX-XXXX-XXXX-XXXX` sketched above; entropy is unchanged at
+80 bits, hex was simpler to implement against `encode(..., 'hex')`). Ten codes
+per user. Redemption normalises input by stripping non-alphanumerics and
+upper-casing, so a user typing spaces, lowercase, or no dashes still succeeds.
 
 Plaintext exists exactly once: in the return value of the generate call. It is
 never stored, never logged, and never returned again.
@@ -134,11 +136,19 @@ pattern (`REVOKE EXECUTE FROM public; GRANT EXECUTE TO authenticated`).
 `redeem_mfa_recovery_code(p_code text) RETURNS boolean`
 - Normalises `p_code`, finds a matching unused row for `auth.uid()`.
 - No match → `false`.
-- Match → sets `used_at = now()` on that row **and deletes the caller's
-  remaining codes**, then returns `true`. Once two-factor is off, leftover codes
-  are dangling credentials; re-enrolling issues a fresh set.
+- Match → sets `used_at = now()` on that row and returns `true`. It does
+  **not** touch the caller's other codes — see `clear_mfa_recovery_codes`
+  below and the ordering note under "Redemption flow".
 - The burn is a single atomic `UPDATE ... WHERE id = ... AND used_at IS NULL
   RETURNING id`, so concurrent redemptions of one code cannot both win.
+
+`clear_mfa_recovery_codes() RETURNS void`
+- Deletes the caller's remaining **unused** codes for `auth.uid()`, leaving
+  any already-burned rows in place as the audit trail.
+- Split out of `redeem_mfa_recovery_code` so the Edge Function can call it
+  only after the TOTP factor deletion has actually succeeded, not
+  unconditionally on every successful burn. Once two-factor is off, leftover
+  codes are dangling credentials; re-enrolling issues a fresh set.
 
 ## Redemption flow
 
@@ -151,27 +161,47 @@ The Edge Function `redeem-recovery-code`:
    user's token, not the service role) so `auth.uid()` resolves and no
    `user_id` is accepted from the request body — nothing to spoof.
 3. On `true`, uses the service-role admin API to delete that user's verified
-   TOTP factors.
-4. Returns success. The client then calls `refreshSession()` —
+   MFA factors. Any failure here (list or delete) is reported as an error —
+   including the case where the factor list comes back with no verified
+   factor to delete, which is treated as failure rather than silent success.
+4. Only once that deletion is confirmed does it call
+   `clear_mfa_recovery_codes` **as the caller**, to remove the now-redundant
+   remaining codes. A failure here is logged but not fatal — the user is
+   already back in on their password alone.
+5. Returns success. The client then calls `refreshSession()` —
    `getAuthenticatorAssuranceLevel` reads factors off the cached session user,
    so without a refresh the gate would not notice. `needsMfaChallengeProvider`
    recomputes to `false` and `AuthGate` moves on by itself, the same way it does
    after a successful challenge.
 
-### Ordering: burn first (decided)
+### Ordering: burn first, delete-siblings last (revised)
 
-Burn-then-delete is atomic and auditable. Its failure mode: if the admin call
-fails after the burn, the user has spent a code and is still locked out, with
-nine left to retry.
+Burn-then-delete-factor is atomic and auditable, and is unchanged from the
+original design: the RPC burns the code first, so concurrent redemptions of
+one code cannot both win.
+
+What changed: the original design had `redeem_mfa_recovery_code` delete the
+caller's other nine codes in the same transaction as the burn, on the premise
+that if the subsequent admin-API factor deletion then failed, the user "still
+has nine left to retry." That premise was false against the implementation —
+the RPC ran *before* the admin call, so by the time a factor-deletion failure
+was possible, the other nine codes were already gone. Every retry the user
+made after that failure read "not valid," having burned the deletion
+transaction's row already. A user who hit that failure was left with zero
+working codes — worse off than before the feature existed.
+
+The fix splits sibling deletion into its own function,
+`clear_mfa_recovery_codes`, called by the Edge Function only *after* the
+factor deletion has actually succeeded (step 4 above). If the factor deletion
+fails, the caller's other nine codes are simply never touched, and "try
+another code" is now genuinely true.
 
 The alternative — verify, delete, then burn — fails safe toward letting the user
 in, but the gap between verify and burn means one code could be accepted twice
-concurrently.
-
-Burn-first is chosen: it is the conventional design, `used_at` gives a real
-audit trail, and "try another code" is a mild failure on a rare path. The Edge
-Function logs a factor-deletion failure loudly, since that is the case where a
-user is left stuck.
+concurrently. Burn-first remains the choice for that reason; only the ordering
+of the sibling-deletion step changed. The Edge Function logs a factor-deletion
+failure loudly, since that is the case where a user is left stuck (with codes
+intact) rather than locked out entirely.
 
 ## No rate-limit table
 
@@ -199,7 +229,10 @@ that is the only way to close the screen. Only then does `onCompleted` fire.
 
 **Challenge** — a "Use a recovery code" action alongside Verify, switching the
 form to a recovery-code field. On success: `refreshSession()`, and the gate
-routes onward on its own. The dashboard shows a "Two-factor is now off" notice.
+routes onward on its own. (The dashboard "Two-factor is now off" notice
+sketched here was dropped from the implementation — the Account screen
+already shows two-factor's current state whenever it's opened, so a
+redundant notice was cut.)
 
 **Account** — when two-factor is on, a "Regenerate recovery codes" action
 reusing the same codes screen. Regenerating invalidates the previous set.
@@ -214,7 +247,10 @@ reusing the same codes screen. Regenerating invalidates the previous set.
 - `redeem_mfa_recovery_code` accepts a valid code once and burns it.
 - A second redemption of the same code returns `false`.
 - Another user's code returns `false`.
-- A successful redemption clears the caller's remaining codes.
+- A redemption leaves the caller's other codes untouched (revised from the
+  original plan of "clears the rest" — see the ordering note above).
+- `clear_mfa_recovery_codes` removes the caller's remaining unused codes,
+  keeping burned rows as the audit trail.
 
 **Dart**:
 - `RecoveryCodesService`: happy path, wrong code, and a retryable network
