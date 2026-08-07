@@ -263,6 +263,11 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
         ],
         const SizedBox(height: AppSpacing.lg),
         OutlinedButton(
+          onPressed: _busy ? null : _replaceRecoveryCodes,
+          child: const Text('Replace recovery codes'),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton(
           onPressed: _busy ? null : _turnOff,
           child: _busy
               ? const SizedBox(
@@ -272,6 +277,22 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
               : const Text('Turn off'),
         ),
       ],
+    );
+  }
+
+  /// A fresh set, invalidating the old one — for someone who has spent a code
+  /// or lost the paper they wrote them on.
+  ///
+  /// Deliberately does NOT call [MfaEnrolmentScreen.onCompleted]: unlike
+  /// [_turnOff], two-factor stays on, so reporting completion would close this
+  /// screen and tell the dashboard the state had changed when it has not.
+  Future<void> _replaceRecoveryCodes() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (routeContext) => RecoveryCodesScreen(
+          onAcknowledged: () => Navigator.of(routeContext).pop(),
+        ),
+      ),
     );
   }
 

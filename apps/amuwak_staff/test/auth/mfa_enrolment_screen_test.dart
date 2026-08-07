@@ -293,4 +293,28 @@ void main() {
     expect(completed, 1);
     expect(lastEnabled, isTrue);
   });
+
+  testWidgets('an enrolled user can replace their recovery codes',
+      (tester) async {
+    // Someone who used a code, or lost the paper, needs a fresh set without
+    // having to turn two-factor off and on again.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Replace recovery codes'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    verify(() => recovery.generate()).called(1);
+
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+
+    // Replacing codes is not the same as turning two-factor off.
+    expect(completed, 0);
+    expect(find.text('Turn off'), findsOneWidget);
+  });
 }
