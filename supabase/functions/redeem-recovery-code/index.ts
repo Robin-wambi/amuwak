@@ -138,9 +138,17 @@ Deno.serve(async (req) => {
     return stuckAfterBurn();
   }
 
-  let deletedCount = 0;
-  for (const factor of factorList as { id: string; status: string }[]) {
-    if (factor.status !== 'verified') continue;
+  // Zero VERIFIED factors is the goal state, not a failure: an admin may
+  // have unenrolled the factor already, or a second device may have won a
+  // concurrent redemption race. Either way the challenge will not appear
+  // again, which is the only thing this endpoint promises. Conflating "we
+  // deleted nothing" with "we failed" used to make the caller retry with the
+  // next code, get the same outcome, and burn every code they had without
+  // ever being wrong to do so.
+  const verifiedFactors = (factorList as { id: string; status: string }[])
+    .filter((factor) => factor.status === 'verified');
+
+  for (const factor of verifiedFactors) {
     const { error: delErr } =
       await admin.auth.admin.mfa.deleteFactor({ userId, id: factor.id });
     if (delErr) {
@@ -149,26 +157,18 @@ Deno.serve(async (req) => {
       });
       return stuckAfterBurn();
     }
-    deletedCount += 1;
   }
 
-  // "Deleted nothing" is not success on a path whose only purpose is
-  // deleting something: it means the account still has a verified factor and
-  // the challenge will still appear, while the user has just been told
-  // recovery worked and spent a code getting told that.
-  if (deletedCount === 0) {
-    console.error('CODE BURNED BUT NO VERIFIED FACTOR WAS FOUND TO DELETE — '
-      + 'user is stuck', { userId, factorCount: factorList.length });
-    return stuckAfterBurn();
-  }
-
-  // Factor deletion is confirmed. Only now clear the caller's remaining
-  // recovery codes — as the CALLER (asCaller), not the service role, so this
-  // stays under the same auth.uid()-scoped RPC pattern as the redeem call
-  // above. A failure here is NOT fatal: the user is already back in with
-  // their password alone, and the worst case is a stale code sitting unused
-  // in the table. Log it and still report success.
-  const { error: clearErr } = await asCaller.rpc('clear_mfa_recovery_codes');
+  // Factor deletion is confirmed (or was never needed). Only now clear the
+  // caller's remaining recovery codes — via the ADMIN client, passing the
+  // userId already verified from the caller's own JWT above: this RPC is
+  // granted to service_role only, not `authenticated`, because it is a
+  // destructive primitive with no aal gate of its own (see migration 0054).
+  // A failure here is NOT fatal: the user is already back in with their
+  // password alone, and the worst case is a stale code sitting unused in the
+  // table. Log it and still report success.
+  const { error: clearErr } =
+    await admin.rpc('clear_mfa_recovery_codes', { p_user: userId });
   if (clearErr) {
     console.error('FACTOR DELETED BUT CLEARING OLD CODES FAILED — '
       + 'non-fatal, old codes may remain', {

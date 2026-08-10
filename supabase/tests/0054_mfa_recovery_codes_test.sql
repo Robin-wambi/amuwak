@@ -6,7 +6,7 @@
 BEGIN;
 SET search_path TO extensions, public;
 
-SELECT plan(15);
+SELECT plan(18);
 
 INSERT INTO auth.users (id) VALUES
   ('00000000-0000-0000-0000-0000000000e1'),
@@ -138,9 +138,45 @@ SET LOCAL "request.jwt.claims" =
 
 -- `clear_mfa_recovery_codes` is the piece that used to live inside the
 -- redeem RPC: it deletes the remaining unused codes, keeping the burned row
--- as the audit trail. This is what the Edge Function calls after it
--- successfully deletes the TOTP factor.
-SELECT clear_mfa_recovery_codes();
+-- as the audit trail. Unlike the other two functions here, it is NOT on the
+-- `authenticated` surface at all — it is a destructive primitive with no aal
+-- gate (it has to run on the aal1 redeem path by design), so the grant is
+-- the entire security property. Assert the grant boundary directly, not
+-- just the happy path.
+-- Asserted with has_function_privilege rather than throws_ok on purpose.
+-- Calling a function you lack EXECUTE on, from inside pgTAP's throws_ok,
+-- CRASHES the Postgres backend on this version ("server closed the connection
+-- unexpectedly") — reproduced in isolation, and it takes the rest of the file
+-- with it. The catalog check asserts the same property more directly, needs no
+-- role switching, and cannot be confused with a runtime failure.
+--
+-- `anon` is the one that actually bit. Supabase's default privileges grant
+-- EXECUTE on every new public function to anon AND authenticated, and revoking
+-- from `public` touches neither. A REVOKE naming only `public, authenticated`
+-- therefore left anon holding EXECUTE — an UNAUTHENTICATED way to wipe any
+-- user's codes over PostgREST using the anon key that ships inside the client.
+-- Verified exploitable against a live database before it was corrected.
+RESET ROLE;
+SELECT ok(
+  NOT has_function_privilege('authenticated',
+                             'clear_mfa_recovery_codes(uuid)', 'EXECUTE'),
+  'authenticated cannot EXECUTE clear_mfa_recovery_codes');
+
+SELECT ok(
+  NOT has_function_privilege('anon',
+                             'clear_mfa_recovery_codes(uuid)', 'EXECUTE'),
+  'anon cannot EXECUTE clear_mfa_recovery_codes');
+
+SELECT ok(
+  has_function_privilege('service_role',
+                         'clear_mfa_recovery_codes(uuid)', 'EXECUTE'),
+  'service_role can EXECUTE clear_mfa_recovery_codes');
+
+-- Only service_role can call it — this is what the Edge Function's admin
+-- client does, passing the userId it already verified from the caller's own
+-- JWT, after it has confirmed the TOTP factor deletion actually succeeded.
+SET LOCAL ROLE service_role;
+SELECT clear_mfa_recovery_codes('00000000-0000-0000-0000-0000000000e1');
 RESET ROLE;
 SELECT is(
   (SELECT count(*)::int FROM mfa_recovery_codes

@@ -118,27 +118,35 @@ BEGIN
 END;
 $$;
 
--- Deletes the caller's remaining UNUSED recovery codes. Split out of
+-- Deletes a user's remaining UNUSED recovery codes. Split out of
 -- `redeem_mfa_recovery_code` so the Edge Function can call this only AFTER
 -- the TOTP factor deletion it performs via the admin API has succeeded — see
--- that function's ordering note. Operates on auth.uid() only: never accepts
--- a caller-supplied user id, so there is nothing to spoof.
+-- that function's ordering note.
 --
--- Only unused rows are deleted (`used_at IS NULL`) so a burned code stays put
--- as the audit trail, same as before this was split out of
--- `redeem_mfa_recovery_code`.
-CREATE FUNCTION clear_mfa_recovery_codes()
+-- Takes `p_user` instead of resolving auth.uid() itself, and is granted ONLY
+-- to service_role (see the REVOKE/GRANT below) — NOT to `authenticated`. This
+-- is a destructive primitive: an aal1 session (password known, authenticator
+-- not) has no business being able to wipe someone's break-glass codes, and
+-- unlike `generate_mfa_recovery_codes` there is no aal2 check to gate it with
+-- — clearing has to run on both the redeem path (aal1, by design: that is
+-- the whole point of a recovery code) and could not tell an aal1 redeemer
+-- from an aal1 attacker by aal alone. So the caller-supplied p_user is safe
+-- ONLY because the grant restricts who can pass one at all: the Edge
+-- Function calls this with the SERVICE-ROLE client, passing the userId it
+-- already verified from the caller's own JWT via auth.getUser() — never a
+-- value taken from the request body. If this is ever re-granted to
+-- `authenticated`, that safety property is gone: anyone could pass anyone
+-- else's uuid. Do not re-grant it.
+CREATE FUNCTION clear_mfa_recovery_codes(p_user uuid)
 RETURNS void
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = public AS $$
-DECLARE
-  v_user uuid := auth.uid();
 BEGIN
-  IF v_user IS NULL THEN
-    RAISE EXCEPTION 'clear_mfa_recovery_codes requires a signed-in caller';
+  IF p_user IS NULL THEN
+    RAISE EXCEPTION 'clear_mfa_recovery_codes requires a user id';
   END IF;
 
-  DELETE FROM mfa_recovery_codes WHERE user_id = v_user AND used_at IS NULL;
+  DELETE FROM mfa_recovery_codes WHERE user_id = p_user AND used_at IS NULL;
 END;
 $$;
 
@@ -146,5 +154,15 @@ REVOKE EXECUTE ON FUNCTION generate_mfa_recovery_codes()      FROM public;
 GRANT  EXECUTE ON FUNCTION generate_mfa_recovery_codes()      TO authenticated;
 REVOKE EXECUTE ON FUNCTION redeem_mfa_recovery_code(text)     FROM public;
 GRANT  EXECUTE ON FUNCTION redeem_mfa_recovery_code(text)     TO authenticated;
-REVOKE EXECUTE ON FUNCTION clear_mfa_recovery_codes()         FROM public;
-GRANT  EXECUTE ON FUNCTION clear_mfa_recovery_codes()         TO authenticated;
+-- `anon` MUST be in this list. Supabase's default privileges grant EXECUTE on
+-- every new function in `public` to BOTH anon and authenticated, and revoking
+-- from `public` does not touch either of those explicit grants. The other two
+-- functions above survive that because they raise on a null auth.uid(); this
+-- one takes a caller-supplied uuid with no caller check by design, so the
+-- grant is its ONLY protection. Omitting anon made it an unauthenticated,
+-- remotely-callable way to wipe any user's break-glass codes over PostgREST
+-- using the anon key that ships in the client — verified exploitable before
+-- this line was corrected.
+REVOKE EXECUTE ON FUNCTION clear_mfa_recovery_codes(uuid)
+  FROM public, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION clear_mfa_recovery_codes(uuid)     TO service_role;
