@@ -110,6 +110,10 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
       await ref.read(recoveryCodesServiceProvider).redeem(_code.text.trim());
     } catch (e) {
       if (mounted) {
+        // Whatever failed here, the code just submitted is already spent (or
+        // was never valid) either way — "try another code" should not
+        // require manually clearing this one first.
+        _code.clear();
         setState(() {
           _error = e is AuthFailure
               ? e.message
@@ -255,14 +259,17 @@ class _MfaChallengeScreenState extends ConsumerState<MfaChallengeScreen> {
               child: TextFormField(
                 controller: _code,
                 autofocus: true,
-                // This field carries a one-time credential. Without these,
-                // Android's soft keyboard learns the typed groups into its
-                // personalised dictionary — handing a secret to a
-                // third-party IME process.
+                // This field carries a one-time credential. autocorrect and
+                // enableSuggestions stop the on-screen keyboard's own
+                // suggestion bar from surfacing it. enableIMEPersonalizedLearning
+                // is the setting that actually reaches the platform IME
+                // (Android's IME_FLAG_NO_PERSONALIZED_LEARNING): without it,
+                // a third-party keyboard app still learns the typed groups
+                // into its personalised dictionary regardless of the two
+                // settings above.
                 autocorrect: false,
                 enableSuggestions: false,
-                textCapitalization: TextCapitalization.none,
-                autofillHints: const [],
+                enableIMEPersonalizedLearning: false,
                 decoration: const InputDecoration(labelText: 'Recovery code'),
                 validator: (v) => (v ?? '').trim().isEmpty
                     ? 'Enter a recovery code'

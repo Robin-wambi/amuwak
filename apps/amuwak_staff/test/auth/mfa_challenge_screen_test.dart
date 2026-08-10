@@ -331,6 +331,15 @@ void main() {
     expect(find.textContaining('not valid'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
         isNotNull);
+    // The rejected code is spent either way (the server already refused it,
+    // or a stuck-after-burn condition means it truly is burned) — "try
+    // another code" must not require clearing this one out by hand first.
+    expect(
+        tester
+            .widget<TextFormField>(find.byType(TextFormField))
+            .controller!
+            .text,
+        isEmpty);
   });
 
   testWidgets('can go back to the authenticator code', (tester) async {
@@ -405,6 +414,15 @@ void main() {
     // This field carries a one-time credential. Without these settings,
     // Android's soft keyboard learns the typed groups into its personalised
     // dictionary — handing a secret to a third-party IME process.
+    //
+    // Only assertions that can actually fail belong here: `autofillHints:
+    // const []` and `textCapitalization: TextCapitalization.none` are both
+    // the TextField defaults already, so they were dropped from the widget
+    // rather than kept as no-op lines with unfalsifiable assertions.
+    // `enableIMEPersonalizedLearning: false` is the setting that actually
+    // reaches the platform IME (Android's
+    // IME_FLAG_NO_PERSONALIZED_LEARNING) — that is what this test now
+    // exercises alongside the two suggestion-bar settings.
     await tester.pumpWidget(harness());
     await tester.pumpAndSettle();
 
@@ -418,7 +436,7 @@ void main() {
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.autocorrect, isFalse);
     expect(field.enableSuggestions, isFalse);
-    expect(field.autofillHints, isEmpty);
+    expect(field.enableIMEPersonalizedLearning, isFalse);
   });
 
   testWidgets(

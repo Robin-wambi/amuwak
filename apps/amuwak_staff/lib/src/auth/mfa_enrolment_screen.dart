@@ -179,15 +179,35 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   /// The factor is live but the user has no way back in if they lose it. Hand
   /// over the recovery codes before declaring success — this is the only moment
   /// the plaintext exists.
+  ///
+  /// [RecoveryCodesScreen] can close before that handover happens (an error
+  /// state's Close action, or a system-back pop while nothing is on screen
+  /// yet to protect — see its `canPop`). Two-factor genuinely IS on at that
+  /// point (the code already verified in [_activate], before this was ever
+  /// called), so this must not pretend otherwise — but it must not report
+  /// completion either: [MfaEnrolmentScreen.onCompleted] promises the account
+  /// is usably protected, and an account with no recovery codes ever shown is
+  /// exactly the lockout this whole feature exists to prevent. So on
+  /// anything other than an actual acknowledgement, re-check the factor
+  /// state instead: [_start] lands on [_Stage.enrolled], which offers
+  /// "Replace recovery codes" — the user's way to still get a set.
   Future<void> _handOverRecoveryCodes() async {
-    await Navigator.of(context).push<void>(
+    final acknowledged = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (routeContext) => RecoveryCodesScreen(
-          onAcknowledged: () => Navigator.of(routeContext).pop(),
-        ),
+        builder: (_) => const RecoveryCodesScreen(),
       ),
     );
-    if (mounted) widget.onCompleted(enabled: true);
+    if (!mounted) return;
+    if (acknowledged == true) {
+      widget.onCompleted(enabled: true);
+      return;
+    }
+    await _start();
+    if (mounted) {
+      setState(() => _actionError =
+          'Two-factor is on, but you have not saved recovery codes yet. '
+          'Use "Replace recovery codes" below to get a set.');
+    }
   }
 
   @override
@@ -295,11 +315,9 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
   Future<void> _replaceRecoveryCodes() async {
     setState(() => _busy = true);
     try {
-      await Navigator.of(context).push<void>(
+      await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (routeContext) => RecoveryCodesScreen(
-            onAcknowledged: () => Navigator.of(routeContext).pop(),
-          ),
+          builder: (_) => const RecoveryCodesScreen(),
         ),
       );
     } finally {

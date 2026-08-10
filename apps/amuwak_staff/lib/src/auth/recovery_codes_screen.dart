@@ -12,12 +12,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// is in progress, or if it failed — there is nothing on screen to protect,
 /// so the screen can be left (system back, or the error state's Close
 /// action).
+///
+/// Reports whether the user actually acknowledged the codes by popping
+/// itself with a `bool` result: push it with `Navigator.of(context).push<bool>(...)`
+/// and treat anything other than `true` (including `null` from
+/// a system-back pop) as "no codes were ever shown and saved". Whether that
+/// result matters depends on the caller: enrolling a fresh factor MUST NOT
+/// report two-factor as successfully turned on unless this returns `true`
+/// (see `MfaEnrolmentScreen._handOverRecoveryCodes`), whereas replacing the
+/// codes on an already-enrolled account has nothing to report either way.
 class RecoveryCodesScreen extends ConsumerStatefulWidget {
-  const RecoveryCodesScreen({super.key, required this.onAcknowledged});
-
-  /// Called once the user confirms they have stored the codes. The caller
-  /// closes this screen.
-  final VoidCallback onAcknowledged;
+  const RecoveryCodesScreen({super.key});
 
   @override
   ConsumerState<RecoveryCodesScreen> createState() =>
@@ -45,14 +50,14 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
     _mint();
   }
 
-  // Guards against a double tap firing onAcknowledged twice. The check has to
+  // Guards against a double tap popping this screen twice. The check has to
   // happen synchronously, first thing, rather than only disabling the button:
   // two taps delivered before a frame rebuilds would otherwise both reach a
   // still-enabled button in the (stale) widget tree.
   void _acknowledge() {
     if (_busy) return;
     setState(() => _busy = true);
-    widget.onAcknowledged();
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _mint() async {
@@ -83,7 +88,16 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
       // error with nothing displayed yet) has nothing to protect, so a pop
       // is allowed there: blocking it would trap the user with no way out
       // of a state that has no codes to lose.
-      canPop: _codes == null,
+      //
+      // `!_minting` matters just as much as `_codes == null`: without it, a
+      // system-back pop during the FIRST mint (or a Retry mint) is allowed
+      // through while generate() is still in flight. That call still commits
+      // server-side — the previous set of codes (which may already be in
+      // someone's hands) is deleted and replaced with a set nobody ever
+      // sees, silently. `_minting` is true synchronously before the first
+      // build that can observe it and false again before the rebuild that
+      // clears it, so it reads correctly in every state without a race.
+      canPop: _codes == null && !_minting,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Recovery codes'),
@@ -121,7 +135,7 @@ class _RecoveryCodesScreenState extends ConsumerState<RecoveryCodesScreen> {
           // PopScope above already permits a system-back pop in this state;
           // this is the explicit affordance for it.
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Close'),
           ),
         ],

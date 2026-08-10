@@ -318,6 +318,57 @@ void main() {
     expect(find.text('Turn off'), findsOneWidget);
   });
 
+  testWidgets(
+      'backing out of the recovery-codes handover during enrolment does not '
+      'report completion, and leaves a way to get codes', (tester) async {
+    // RecoveryCodesScreen can close before the user ever acknowledges seeing
+    // codes (its error state's Close action, or a system-back pop before
+    // minting finishes). Two-factor genuinely IS on at that point — the code
+    // already verified below, before _handOverRecoveryCodes ever runs — so
+    // this must not pretend otherwise. But onCompleted(enabled: true) must
+    // not fire either: that would report an account as usably protected when
+    // no recovery code was ever shown, which is the exact lockout this
+    // feature exists to prevent.
+    stubEnroll();
+    when(() => mfa.submitCode(
+        factorId: any(named: 'factorId'),
+        code: any(named: 'code'))).thenAnswer((_) async {});
+    when(() => recovery.generate())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+    // First call (initState) must report nothing enrolled, so the screen
+    // reaches the setup/QR stage. The second call — made by _start() when
+    // _handOverRecoveryCodes re-checks after the bail-out — must report the
+    // factor as verified: submitCode() already succeeded server-side by
+    // then, same as it would for a real account.
+    var verifiedCalls = 0;
+    when(() => mfa.verifiedFactors()).thenAnswer((_) async {
+      verifiedCalls += 1;
+      return verifiedCalls == 1 ? <Factor>[] : [_verified('factor-1')];
+    });
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    expect(find.textContaining('Could not create'), findsOneWidget);
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsNothing);
+    expect(completed, 0,
+        reason: 'no recovery code was ever shown and saved');
+    // The screen settles back onto the enrolled stage, which is where
+    // "Replace recovery codes" lives — the user's way to still get a set.
+    expect(find.text('Replace recovery codes'), findsOneWidget);
+    expect(find.textContaining('you have not saved recovery codes yet'),
+        findsOneWidget);
+  });
+
   testWidgets('a rapid double tap on Replace recovery codes only pushes one '
       'screen', (tester) async {
     // Without a real _busy guard, two taps delivered before the first frame
