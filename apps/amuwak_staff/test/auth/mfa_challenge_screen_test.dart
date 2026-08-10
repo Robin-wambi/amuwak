@@ -411,7 +411,11 @@ void main() {
     await tester.tap(find.text('Use a recovery code'));
     await tester.pumpAndSettle();
 
-    final field = tester.widget<TextFormField>(find.byType(TextFormField));
+    // Assert against the inner TextField, not the TextFormField: the form
+    // wrapper takes these as constructor arguments and forwards them, but does
+    // not expose them as getters, so reading them off TextFormField does not
+    // compile.
+    final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.autocorrect, isFalse);
     expect(field.enableSuggestions, isFalse);
     expect(field.autofillHints, isEmpty);
