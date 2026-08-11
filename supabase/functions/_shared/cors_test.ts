@@ -33,7 +33,7 @@ Deno.test('unconfigured stays wildcard, exactly as the functions already shipped
   const headers = policy({})(request(STAFF));
   assertEquals(headers['Access-Control-Allow-Origin'], '*');
   // No Vary: nothing varies, so nothing to tell a cache about.
-  assertEquals(headers['Vary'], undefined);
+  assertFalse('Vary' in headers);
 });
 
 Deno.test('the singular ALLOWED_ORIGIN is still read, so an existing lock-down survives', () => {
@@ -71,7 +71,7 @@ Deno.test("an explicit '*' means wildcard, not an origin literally named '*'", (
   // nothing and blocks every browser — the exact opposite of what it says.
   const headers = policy({ ALLOWED_ORIGINS: '*' })(request(STAFF));
   assertEquals(headers['Access-Control-Allow-Origin'], '*');
-  assertEquals(headers['Vary'], undefined);
+  assertFalse('Vary' in headers);
 });
 
 Deno.test('a request with no Origin header is not handed one', () => {
@@ -100,7 +100,12 @@ Deno.test('matching is exact — no prefix, suffix or substring', () => {
 Deno.test('the preflight headers survive every mode', () => {
   // Dropping these breaks the OPTIONS preflight, which fails the request just
   // as thoroughly as a wrong origin does.
-  for (const env of [{}, { ALLOWED_ORIGINS: STAFF }]) {
+  //
+  // Annotated rather than inferred: from the literals alone TypeScript widens
+  // this to `{ ALLOWED_ORIGINS?: undefined } | { ALLOWED_ORIGINS: string }`,
+  // which is not a `Record<string, string>`.
+  const environments: Record<string, string>[] = [{}, { ALLOWED_ORIGINS: STAFF }];
+  for (const env of environments) {
     for (const origin of [STAFF, 'https://evil.test', null]) {
       const headers = policy(env)(request(origin));
       assert(headers['Access-Control-Allow-Headers'].includes('authorization'));
