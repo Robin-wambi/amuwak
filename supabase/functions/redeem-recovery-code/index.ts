@@ -33,6 +33,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 // up to ten crypt() calls in the RPC.
 const MAX_CODE_LENGTH = 64;
 
+// Defaults to '*', matching `invite-staff`. That is safe here rather than
+// merely convenient: '*' cannot be combined with credentials, and this function
+// authenticates from an explicit Authorization header that no browser attaches
+// on its own — a cross-origin page cannot read the staff app's session to forge
+// one. CORS is not the authorisation boundary here; the bearer token is.
+//
+// Set ALLOWED_ORIGIN to lock it down once the production URL settles. Worth
+// knowing before you do: the header takes ONE origin or '*', never a list, so a
+// single value also shuts out localhost during development. The real change is
+// an allowlist that echoes the request origin, and it belongs in both functions
+// at once rather than only this one.
 const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
 
 const corsHeaders = {

@@ -73,6 +73,12 @@ $$;
 --
 -- bcrypt cannot be looked up by value, so this walks the caller's unused rows.
 -- At most ten verifications on a rare path.
+--
+-- Deliberately not constant-time: the loop exits on the first match. The only
+-- timing that varies is a SUCCESSFUL redemption, which already requires holding
+-- a valid code — a wrong code always walks every unused row. The query is also
+-- scoped to auth.uid(), so the most this can leak is the position of a caller's
+-- own code among their own rows. Nothing an attacker does not already have.
 CREATE FUNCTION redeem_mfa_recovery_code(p_code text)
 RETURNS boolean
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
