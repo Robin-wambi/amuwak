@@ -6,7 +6,7 @@
 BEGIN;
 SET search_path TO extensions, public;
 
-SELECT plan(18);
+SELECT plan(27);
 
 INSERT INTO auth.users (id) VALUES
   ('00000000-0000-0000-0000-0000000000e1'),
@@ -215,6 +215,96 @@ SET LOCAL "request.jwt.claims" =
 SELECT ok(
   redeem_mfa_recovery_code((SELECT code FROM live_e1 LIMIT 1)),
   'the code e2 was refused still redeems for its actual owner');
+
+-- 19-20. Clearing your OWN codes is gated on aal2, exactly like minting them.
+-- An aal1 session (password known, authenticator not) destroying someone's
+-- break-glass codes is a denial of their recovery path rather than a privilege
+-- gain, but a password alone still should not be able to do it.
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal1"}';
+SELECT throws_ok(
+  'SELECT clear_own_mfa_recovery_codes()',
+  'P0001', NULL,
+  'an aal1 session cannot clear its own recovery codes');
+
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1"}';
+SELECT throws_ok(
+  'SELECT clear_own_mfa_recovery_codes()',
+  'P0001', NULL,
+  'a missing aal claim cannot clear its own codes either');
+
+-- 21-22. The turn-off path itself. e1 clears its own live codes; the burned
+-- row stays as the audit trail, and e2's set is untouched. That second half is
+-- the property which makes this safe to put on the `authenticated` surface at
+-- all: there is no user id for a caller to get wrong or to forge.
+SET LOCAL "request.jwt.claims" =
+  '{"sub":"00000000-0000-0000-0000-0000000000e1","aal":"aal2"}';
+SELECT clear_own_mfa_recovery_codes();
+
+RESET ROLE;
+SELECT is(
+  (SELECT count(*)::int FROM mfa_recovery_codes
+    WHERE user_id = '00000000-0000-0000-0000-0000000000e1'
+      AND used_at IS NULL),
+  0,
+  'clear_own_mfa_recovery_codes removes the caller''s own live codes');
+
+SELECT is(
+  (SELECT count(*)::int FROM mfa_recovery_codes
+    WHERE user_id = '00000000-0000-0000-0000-0000000000e2'
+      AND used_at IS NULL),
+  10,
+  'clearing your own codes does not touch another user''s');
+
+-- 23. The burned row survives, so the audit trail is not destroyed by a
+-- turn-off. Asserted separately from #21 because "removed the live ones" and
+-- "kept the used one" fail in different directions: a DELETE that dropped the
+-- WHERE clause would still pass #18.
+SELECT is(
+  (SELECT count(*)::int FROM mfa_recovery_codes
+    WHERE user_id = '00000000-0000-0000-0000-0000000000e1'
+      AND used_at IS NOT NULL),
+  1,
+  'clearing your own codes keeps the burned row as the audit trail');
+
+-- 24-25. The grant split that makes the two clear functions different.
+-- `clear_mfa_recovery_codes(uuid)` is service_role-only because a
+-- caller-supplied user id is safe only while nobody but service_role can pass
+-- one. This one takes NO argument, so it can reach exactly the caller's rows —
+-- which is what makes it safe to grant to `authenticated`. If a future change
+-- ever gives this an argument, these two assertions are the ones that should
+-- stop it.
+--
+-- Catalog check rather than throws_ok, for the reason documented above: calling
+-- a function you lack EXECUTE on crashes the backend on this Postgres version
+-- and takes the rest of the file with it.
+SELECT ok(
+  has_function_privilege('authenticated',
+                         'clear_own_mfa_recovery_codes()', 'EXECUTE'),
+  'authenticated can EXECUTE clear_own_mfa_recovery_codes');
+
+SELECT ok(
+  NOT has_function_privilege('anon',
+                             'clear_own_mfa_recovery_codes()', 'EXECUTE'),
+  'anon cannot EXECUTE clear_own_mfa_recovery_codes');
+
+-- 26-27. It takes no arguments and never has. Both assertions exist to make a
+-- future `clear_own_mfa_recovery_codes(uuid)` overload — which would reopen
+-- exactly the cross-account hole the argument-less design avoids — a test
+-- failure rather than a review catch.
+SELECT is(
+  (SELECT count(*)::int FROM pg_proc
+    WHERE proname = 'clear_own_mfa_recovery_codes'),
+  1,
+  'there is exactly one clear_own_mfa_recovery_codes');
+
+SELECT is(
+  (SELECT pronargs::int FROM pg_proc
+    WHERE proname = 'clear_own_mfa_recovery_codes'),
+  0,
+  'clear_own_mfa_recovery_codes takes no arguments');
 
 SELECT * FROM finish();
 ROLLBACK;

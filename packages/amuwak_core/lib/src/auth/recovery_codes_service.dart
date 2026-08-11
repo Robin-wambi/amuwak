@@ -69,6 +69,33 @@ class RecoveryCodesService {
     throw AuthFailure('Could not read the recovery codes from the server.');
   }
 
+  /// Destroy the caller's remaining codes, for the user who turns two-factor
+  /// off deliberately.
+  ///
+  /// Calls `clear_own_mfa_recovery_codes`, which takes no argument and can
+  /// therefore only ever reach the caller's own rows — NOT the service-role
+  /// `clear_mfa_recovery_codes(uuid)` the Edge Function uses, which is not on
+  /// the `authenticated` surface at all.
+  ///
+  /// Without this, codes outlive the factor they were minted for: [generate]
+  /// replaces a set only when a new one is successfully minted, so turning
+  /// two-factor off and later re-enrolling with a mint that FAILS leaves the
+  /// old codes live against the new factor.
+  Future<void> clearOwn() async {
+    try {
+      await _callRpc('clear_own_mfa_recovery_codes');
+    } on PostgrestException catch (e) {
+      throw AuthFailure(e.message);
+    } catch (e, st) {
+      developer.log('clear_own_mfa_recovery_codes failed unexpectedly.',
+          name: 'RecoveryCodesService', error: e, stackTrace: st);
+      throw AuthFailure(
+        'Could not reach the server. Please try again.',
+        retryable: true,
+      );
+    }
+  }
+
   /// Spend a code. On success the user's TOTP factor is gone and two-factor is
   /// off until they enrol again.
   Future<void> redeem(String code) async {

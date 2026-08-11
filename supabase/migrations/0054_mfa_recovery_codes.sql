@@ -156,6 +156,47 @@ BEGIN
 END;
 $$;
 
+-- The caller's OWN codes, cleared by the caller. A separate function rather
+-- than a re-grant of the one above, because that one takes a caller-supplied
+-- p_user and is safe ONLY while nobody but service_role can pass one. This
+-- takes NO argument: it can reach exactly auth.uid()'s rows and nobody else's,
+-- and that is what makes it safe on the `authenticated` surface.
+--
+-- Called when a user turns two-factor OFF voluntarily. Without it their codes
+-- outlive the factor they were minted for:
+-- `generate_mfa_recovery_codes` replaces a set only when a NEW one is
+-- successfully minted, so turn-off followed by a re-enrol whose mint fails
+-- leaves the previous codes live against the new factor. That is an MFA bypass
+-- for anyone holding the paper the user wrote them on — and the turn-off
+-- dialog says the account is "protected by your password alone", so treating
+-- that paper as dead is exactly what a user is invited to do.
+--
+-- aal2 for the same reason the mint requires it. An aal1 session (password
+-- known, authenticator not) destroying someone's break-glass codes is a denial
+-- of their recovery path rather than a privilege gain, but a password alone
+-- still should not be able to do it. GoTrue already requires aal2 to unenrol a
+-- verified factor, so the turn-off path that calls this always has it. Written
+-- as IS DISTINCT FROM so a missing or null claim fails CLOSED.
+CREATE FUNCTION clear_own_mfa_recovery_codes()
+RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user uuid := auth.uid();
+  v_aal  text := auth.jwt() ->> 'aal';
+BEGIN
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'clear_own_mfa_recovery_codes requires a signed-in caller';
+  END IF;
+  IF v_aal IS DISTINCT FROM 'aal2' THEN
+    RAISE EXCEPTION 'clear_own_mfa_recovery_codes requires an aal2 session';
+  END IF;
+
+  -- Burned rows stay, as the audit trail — same as the service-role version.
+  DELETE FROM mfa_recovery_codes WHERE user_id = v_user AND used_at IS NULL;
+END;
+$$;
+
 REVOKE EXECUTE ON FUNCTION generate_mfa_recovery_codes()      FROM public;
 GRANT  EXECUTE ON FUNCTION generate_mfa_recovery_codes()      TO authenticated;
 REVOKE EXECUTE ON FUNCTION redeem_mfa_recovery_code(text)     FROM public;
@@ -172,3 +213,12 @@ GRANT  EXECUTE ON FUNCTION redeem_mfa_recovery_code(text)     TO authenticated;
 REVOKE EXECUTE ON FUNCTION clear_mfa_recovery_codes(uuid)
   FROM public, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION clear_mfa_recovery_codes(uuid)     TO service_role;
+-- `anon` is named here too, even though this one raises on a null auth.uid()
+-- the way the mint does and so cannot be driven by an anonymous caller anyway.
+-- Spelled out rather than reasoned about, because the default-privilege trap
+-- directly above cost a fix once already, and a reader should not have to work
+-- out from scratch which of these functions are protected by their body and
+-- which by their grant.
+REVOKE EXECUTE ON FUNCTION clear_own_mfa_recovery_codes()
+  FROM public, anon;
+GRANT  EXECUTE ON FUNCTION clear_own_mfa_recovery_codes()     TO authenticated;

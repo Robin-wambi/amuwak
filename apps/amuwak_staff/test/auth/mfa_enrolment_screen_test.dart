@@ -44,6 +44,7 @@ void main() {
     recovery = _MockRecovery();
     when(() => recovery.generate())
         .thenAnswer((_) async => ['AAAAA-BBBBB-CCCCC-DDDDD']);
+    when(() => recovery.clearOwn()).thenAnswer((_) async {});
   });
 
   Widget harness() => ProviderScope(
@@ -168,6 +169,57 @@ void main() {
     expect(lastEnabled, isFalse);
   });
 
+  testWidgets('turning it off also clears the codes minted for that factor',
+      (tester) async {
+    // Codes outlive the factor otherwise: the mint replaces a set only when a
+    // new one succeeds, so a later re-enrol whose mint fails would leave these
+    // live against the new factor — an MFA bypass for anyone holding the paper
+    // the user stopped guarding the moment they turned two-factor off.
+    //
+    // The ORDER is the load-bearing part. Clearing before the factor is
+    // confirmed gone would destroy the recovery path while two-factor is still
+    // on, which is a self-inflicted lockout rather than a tidy-up.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any())).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    verifyInOrder([
+      () => mfa.removeFactor('factor-1'),
+      () => recovery.clearOwn(),
+    ]);
+  });
+
+  testWidgets('a failed clear still reports two-factor as off', (tester) async {
+    // The factor is already gone by then. Reporting failure would tell the
+    // user two-factor is still on when it is not — the same lie as the
+    // turn-off failure case, pointing the other way.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any())).thenAnswer((_) async {});
+    when(() => recovery.clearOwn())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    expect(completed, 1);
+    expect(lastEnabled, isFalse);
+    expect(find.textContaining('Could not turn'), findsNothing);
+  });
+
   testWidgets('a cancelled turn-off leaves the factor alone', (tester) async {
     when(() => mfa.verifiedFactors())
         .thenAnswer((_) async => [_verified('factor-1')]);
@@ -203,6 +255,9 @@ void main() {
     // still very much on.
     expect(completed, 0);
     expect(find.textContaining('Could not turn'), findsOneWidget);
+    // And the codes must survive: wiping them here would strip the recovery
+    // path off an account whose factor is still very much enrolled.
+    verifyNever(() => recovery.clearOwn());
   });
 
   testWidgets('keeps the form usable after a wrong code', (tester) async {

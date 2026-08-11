@@ -87,6 +87,50 @@ void main() {
     });
   });
 
+  group('clearOwn', () {
+    late _MockRpc rpc;
+
+    setUp(() {
+      rpc = _MockRpc();
+      service = RecoveryCodesService(client: client, rpc: rpc.call);
+    });
+
+    test('calls the argument-less RPC, not the service-role one', () async {
+      // The distinction is the whole security property: the service-role
+      // `clear_mfa_recovery_codes(uuid)` takes a user id and is not on the
+      // `authenticated` surface at all. Calling it from here would be a
+      // permission error at best.
+      when(() => rpc('clear_own_mfa_recovery_codes'))
+          .thenAnswer((_) async => null);
+
+      await service.clearOwn();
+
+      verify(() => rpc('clear_own_mfa_recovery_codes')).called(1);
+      verifyNever(() => rpc('clear_mfa_recovery_codes'));
+    });
+
+    test('an aal1 caller is rejected', () async {
+      // The database raises. Surfacing it as AuthFailure keeps the UI on one
+      // error type, the same as generate().
+      when(() => rpc('clear_own_mfa_recovery_codes')).thenThrow(
+          PostgrestException(
+              message: 'clear_own_mfa_recovery_codes requires an aal2 session'));
+
+      await expectLater(service.clearOwn(), throwsA(isA<AuthFailure>()));
+    });
+
+    test('a transport failure surfaces a retryable AuthFailure', () async {
+      when(() => rpc('clear_own_mfa_recovery_codes'))
+          .thenThrow(Exception('Failed host lookup'));
+
+      await expectLater(
+        service.clearOwn(),
+        throwsA(isA<AuthFailure>()
+            .having((f) => f.retryable, 'retryable', isTrue)),
+      );
+    });
+  });
+
   group('redeem', () {
     test('posts the code to the edge function', () async {
       when(() => functions.invoke('redeem-recovery-code',

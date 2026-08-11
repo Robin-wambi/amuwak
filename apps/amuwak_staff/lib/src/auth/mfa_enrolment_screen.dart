@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -141,6 +143,7 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
     });
     try {
       await ref.read(mfaServiceProvider).removeFactor(existing.id);
+      await _clearRecoveryCodes();
       if (mounted) widget.onCompleted(enabled: false);
     } catch (_) {
       // Reporting completion here would tell the user two-factor is off while
@@ -151,6 +154,30 @@ class _MfaEnrolmentScreenState extends ConsumerState<MfaEnrolmentScreen> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Best-effort: destroy the codes minted for the factor just removed.
+  ///
+  /// Has its own try/catch rather than sitting inside [_turnOff]'s, because by
+  /// the time this runs two-factor is genuinely OFF. Letting a failure here
+  /// reach that handler would report "Could not turn two-factor off" over a
+  /// removal that succeeded — the same lie in the opposite direction to the one
+  /// [_turnOff]'s catch exists to prevent.
+  ///
+  /// Logged rather than ignored, because what it prevents is real: codes
+  /// outlive the factor they were minted for. `generate_mfa_recovery_codes`
+  /// replaces a set only when a NEW one is successfully minted, so turning
+  /// two-factor off and later re-enrolling with a mint that FAILS leaves the
+  /// old codes live against the new factor. The dialog above has just told the
+  /// user their account is protected by their password alone, which is an
+  /// invitation to stop guarding the paper they wrote those codes on.
+  Future<void> _clearRecoveryCodes() async {
+    try {
+      await ref.read(recoveryCodesServiceProvider).clearOwn();
+    } catch (e, st) {
+      developer.log('Could not clear recovery codes after turning MFA off.',
+          name: 'MfaEnrolmentScreen', error: e, stackTrace: st);
     }
   }
 
