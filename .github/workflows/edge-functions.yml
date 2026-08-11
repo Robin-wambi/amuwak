@@ -1,0 +1,46 @@
+name: Edge Functions
+
+# Until this existed, nothing in CI ever looked at supabase/functions/**. The
+# Flutter `test` workflow cannot: Edge Functions are Deno, not Dart, and no
+# contributor here has a Deno toolchain locally either. So a broken function
+# would have surfaced at `supabase functions deploy` — or worse, at runtime, on
+# the recovery path a locked-out staff member is already stuck on.
+#
+# Path-filtered because it is irrelevant to the ~95% of PRs that touch only
+# Dart. Note that a path-filtered workflow reports no run at all (not a pass)
+# on PRs that miss the filter, so do not make this a required check without
+# accounting for that.
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/edge-functions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/edge-functions.yml'
+
+jobs:
+  # Named `edge-functions` rather than `test` so it is distinguishable from the
+  # Flutter workflow's `test` check in the PR checks list.
+  edge-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # --allow-env because importing _shared/cors.ts binds `corsHeadersFor` to
+      # Deno.env at module load. The cases themselves inject their config.
+      - name: Test shared modules
+        run: deno test --allow-env supabase/functions/_shared/
+
+      # Type-checks the handlers, which the tests above do not import — they
+      # pull supabase-js from esm.sh, so this step needs network and is the one
+      # to look at first if this job ever fails for no local reason.
+      - name: Type-check the functions
+        run: deno check supabase/functions/*/index.ts
