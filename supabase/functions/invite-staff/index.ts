@@ -30,32 +30,28 @@
 // 2.x into this security-boundary function. Bump deliberately after testing —
 // verify this matches a known-good release on the first deploy.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { corsHeadersFor } from '../_shared/cors.ts';
 
 const ALLOWED_ROLES = ['driver', 'in_shop', 'manager'] as const;
 type Role = (typeof ALLOWED_ROLES)[number];
 
-// Defaults to '*' (fine for a token-authenticated API — the browser never
-// attaches the bearer token automatically). Set ALLOWED_ORIGIN to the web app
-// origin to lock it down once the production URL is known.
-const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowedOrigin,
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 Deno.serve(async (req) => {
+  // Per-request, because the allow header echoes the caller's origin once an
+  // allowlist is configured. The policy and the reasoning behind the '*'
+  // default now live in `_shared/cors.ts`, shared with `redeem-recovery-code`
+  // so the two cannot drift. `json` closes over it, which keeps every existing
+  // call site below unchanged.
+  const corsHeaders = corsHeadersFor(req);
+
+  function json(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

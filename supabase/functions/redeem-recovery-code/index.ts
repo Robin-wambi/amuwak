@@ -26,6 +26,7 @@
 // and is fine, but there is NO anonymous path: an attacker needs the password
 // AND a code.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { corsHeadersFor } from '../_shared/cors.ts';
 
 // A recovery code is 20 hex characters plus 3 dashes (24 chars); normalisation
 // also tolerates spaces or lowercase. Nothing legitimate is anywhere near this
@@ -33,46 +34,33 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 // up to ten crypt() calls in the RPC.
 const MAX_CODE_LENGTH = 64;
 
-// Defaults to '*', matching `invite-staff`. That is safe here rather than
-// merely convenient: '*' cannot be combined with credentials, and this function
-// authenticates from an explicit Authorization header that no browser attaches
-// on its own — a cross-origin page cannot read the staff app's session to forge
-// one. CORS is not the authorisation boundary here; the bearer token is.
-//
-// Set ALLOWED_ORIGIN to lock it down once the production URL settles. Worth
-// knowing before you do: the header takes ONE origin or '*', never a list, so a
-// single value also shuts out localhost during development. The real change is
-// an allowlist that echoes the request origin, and it belongs in both functions
-// at once rather than only this one.
-const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowedOrigin,
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
-// Used for every failure after the code has already been burned. Deliberately
-// does NOT say "try another code" implying the other nine are still intact —
-// they are, but the wording only needs to be honest: the code just used is
-// spent, two-factor may still be on, and another code will genuinely work
-// now that clearing the siblings happens after factor deletion, not before.
-function stuckAfterBurn(): Response {
-  return json({
-    error: 'That code was accepted, but two-factor could not be turned off. '
-      + 'Try another code.',
-  }, 500);
-}
-
 Deno.serve(async (req) => {
+  // Per-request, because the allow header echoes the caller's origin once an
+  // allowlist is configured. See `_shared/cors.ts` for why '*' is the default
+  // and why it is safe on a bearer-token endpoint. `json` and `stuckAfterBurn`
+  // close over it rather than taking it as an argument, which keeps every
+  // existing call site below unchanged.
+  const corsHeaders = corsHeadersFor(req);
+
+  function json(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Used for every failure after the code has already been burned. Deliberately
+  // does NOT say "try another code" implying the other nine are still intact —
+  // they are, but the wording only needs to be honest: the code just used is
+  // spent, two-factor may still be on, and another code will genuinely work
+  // now that clearing the siblings happens after factor deletion, not before.
+  function stuckAfterBurn(): Response {
+    return json({
+      error: 'That code was accepted, but two-factor could not be turned off. '
+        + 'Try another code.',
+    }, 500);
+  }
+
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
