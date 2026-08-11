@@ -1,4 +1,4 @@
--- 0054_min_two_managers.sql
+-- 0055_min_two_managers.sql
 -- MFA recovery is manager-mediated: a staff member who loses their
 -- authenticator is unlocked by a manager. That only works if a locked-out
 -- manager has a colleague, so the estate must never fall to one active manager.
@@ -17,7 +17,7 @@
 -- with nothing behind it.
 
 -- The single definition of "active manager", shared by the trigger below and
--- the audit policy in 0055.
+-- the audit policy in 0056.
 --
 -- Reads staff.role directly rather than calling auth_staff_role(), which
 -- deliberately answers a narrower question: it checks `active` but NOT

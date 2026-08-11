@@ -1,4 +1,4 @@
--- 0055_mfa_reset_audit.sql
+-- 0056_mfa_reset_audit.sql
 -- Clearing a staff member's TOTP factor deliberately weakens their account.
 -- That must never be invisible: who did it, to whom, and how many factors went.
 --
@@ -19,7 +19,7 @@ CREATE INDEX mfa_reset_audit_target_idx
 
 ALTER TABLE mfa_reset_audit ENABLE ROW LEVEL SECURITY;
 
--- is_active_manager() (0054) rather than auth_staff_role(): the latter checks
+-- is_active_manager() (0055) rather than auth_staff_role(): the latter checks
 -- `active` but not `deleted_at IS NULL`, so a soft-deleted manager would keep
 -- read access to the security-audit log. Both exclude drivers.
 CREATE POLICY mfa_reset_audit_manager_read ON mfa_reset_audit FOR SELECT

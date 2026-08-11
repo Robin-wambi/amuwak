@@ -1,4 +1,4 @@
--- 0054_min_two_managers_test.sql
+-- 0055_min_two_managers_test.sql
 -- A locked-out manager is unlocked by a colleague, so the estate must never
 -- fall to a single active manager. Four ways to remove one; all are blocked.
 BEGIN;

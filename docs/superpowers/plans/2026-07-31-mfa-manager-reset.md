@@ -20,13 +20,13 @@
 > plain `SELECT role`. Verified live: it returns `'driver'` for an active
 > driver, and RLS already denies a driver's self-promotion.
 >
-> Consequences: a planned migration 0056 (a staff-identity guard trigger) was
+> Consequences: a planned third migration (a staff-identity guard trigger) was
 > written against this false premise, empirically shown to close no live hole,
 > and dropped. The shipped code did not otherwise change — only the reasons in
 > its comments, which the committed files now state correctly. The embedded
 > snippets below are left as the historical record and no longer match the
 > files verbatim.
-- Migration numbering continues from `0053`; this plan adds `0054` and `0055`.
+- Migration numbering continues from `0054` (taken by PR #105); this plan adds `0055` and `0056`.
 - Every pgTAP file goes in `supabase/tests/` named after its migration.
 - Flutter tests run **one file at a time** on this host: `flutter test <path> --timeout=none`. Never run two Flutter commands concurrently — they crash the tool.
 - Commit per task. Pass explicit paths to `git commit` so unrelated working-tree files are never swept in.
@@ -36,8 +36,8 @@
 ### Task 1: Two-manager minimum trigger
 
 **Files:**
-- Create: `supabase/migrations/0054_min_two_managers.sql`
-- Create: `supabase/tests/0054_min_two_managers_test.sql`
+- Create: `supabase/migrations/0055_min_two_managers.sql`
+- Create: `supabase/tests/0055_min_two_managers_test.sql`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -45,10 +45,10 @@
 
 - [ ] **Step 1: Write the failing pgTAP test**
 
-Create `supabase/tests/0054_min_two_managers_test.sql`:
+Create `supabase/tests/0055_min_two_managers_test.sql`:
 
 ```sql
--- 0054_min_two_managers_test.sql
+-- 0055_min_two_managers_test.sql
 -- A locked-out manager is unlocked by a colleague, so the estate must never
 -- fall to a single active manager. Four ways to remove one; all are blocked.
 BEGIN;
@@ -123,16 +123,16 @@ supabase start -x storage-api,imgproxy --ignore-health-check
 supabase test db
 ```
 
-Expected: `0054_min_two_managers_test.sql` fails — the `throws_ok` assertions report that nothing was raised, because no trigger exists yet.
+Expected: `0055_min_two_managers_test.sql` fails — the `throws_ok` assertions report that nothing was raised, because no trigger exists yet.
 
 Note: `0015_powersync` fails 15/15 for pre-existing reasons unrelated to this work. A non-zero exit code is expected; read the per-file results rather than the exit status.
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/0054_min_two_managers.sql`:
+Create `supabase/migrations/0055_min_two_managers.sql`:
 
 ```sql
--- 0054_min_two_managers.sql
+-- 0055_min_two_managers.sql
 -- MFA recovery is manager-mediated: a staff member who loses their
 -- authenticator is unlocked by a manager. That only works if a locked-out
 -- manager has a colleague, so the estate must never fall to one active manager.
@@ -142,7 +142,7 @@ Create `supabase/migrations/0054_min_two_managers.sql`:
 -- would let a driver demote the managers.
 
 -- The single definition of "active manager", shared by the trigger below and
--- the audit policy in 0055. Deliberately reads staff.role directly rather than
+-- the audit policy in 0056. Deliberately reads staff.role directly rather than
 -- auth_staff_role(), for the 0039 reason above.
 CREATE OR REPLACE FUNCTION is_active_manager(p_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
@@ -211,13 +211,13 @@ supabase db reset
 supabase test db
 ```
 
-Expected: `0054_min_two_managers_test.sql` reports 8/8 passing.
+Expected: `0055_min_two_managers_test.sql` reports 8/8 passing.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/0054_min_two_managers.sql supabase/tests/0054_min_two_managers_test.sql
-git commit --no-verify -F - -- supabase/migrations/0054_min_two_managers.sql supabase/tests/0054_min_two_managers_test.sql <<'EOF'
+git add supabase/migrations/0055_min_two_managers.sql supabase/tests/0055_min_two_managers_test.sql
+git commit --no-verify -F - -- supabase/migrations/0055_min_two_managers.sql supabase/tests/0055_min_two_managers_test.sql <<'EOF'
 feat(db): require at least two active managers
 
 MFA recovery is manager-mediated, so a locked-out manager needs a colleague to
@@ -229,7 +229,7 @@ obvious route open.
 A trigger rather than RLS because migration 0039 makes auth_staff_role() return
 'manager' for drivers, so an RLS guard would let a driver demote the managers.
 is_active_manager() reads staff.role directly for the same reason and becomes
-the shared definition for the audit policy in 0055.
+the shared definition for the audit policy in 0056.
 EOF
 ```
 
@@ -238,8 +238,8 @@ EOF
 ### Task 2: MFA reset audit table
 
 **Files:**
-- Create: `supabase/migrations/0055_mfa_reset_audit.sql`
-- Create: `supabase/tests/0055_mfa_reset_audit_test.sql`
+- Create: `supabase/migrations/0056_mfa_reset_audit.sql`
+- Create: `supabase/tests/0056_mfa_reset_audit_test.sql`
 
 **Interfaces:**
 - Consumes: `is_active_manager(uuid)` from Task 1.
@@ -247,10 +247,10 @@ EOF
 
 - [ ] **Step 1: Write the failing pgTAP test**
 
-Create `supabase/tests/0055_mfa_reset_audit_test.sql`:
+Create `supabase/tests/0056_mfa_reset_audit_test.sql`:
 
 ```sql
--- 0055_mfa_reset_audit_test.sql
+-- 0056_mfa_reset_audit_test.sql
 -- Clearing someone's second factor deliberately weakens their account, so it
 -- must leave a record. Managers may read that record; nobody else may, and no
 -- client may write it.
@@ -313,10 +313,10 @@ Expected: fails because relation `mfa_reset_audit` does not exist.
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/0055_mfa_reset_audit.sql`:
+Create `supabase/migrations/0056_mfa_reset_audit.sql`:
 
 ```sql
--- 0055_mfa_reset_audit.sql
+-- 0056_mfa_reset_audit.sql
 -- Clearing a staff member's TOTP factor deliberately weakens their account.
 -- That must never be invisible: who did it, to whom, and how many factors went.
 --
@@ -337,7 +337,7 @@ CREATE INDEX mfa_reset_audit_target_idx
 
 ALTER TABLE mfa_reset_audit ENABLE ROW LEVEL SECURITY;
 
--- is_active_manager() (0054), NOT auth_staff_role(): 0039 makes the latter
+-- is_active_manager() (0055), NOT auth_staff_role(): 0039 makes the latter
 -- return 'manager' for drivers, which would expose the log to every rider.
 CREATE POLICY mfa_reset_audit_manager_read ON mfa_reset_audit FOR SELECT
   USING (is_active_manager(auth.uid()));
@@ -350,13 +350,13 @@ supabase db reset
 supabase test db
 ```
 
-Expected: `0055_mfa_reset_audit_test.sql` reports 4/4 passing.
+Expected: `0056_mfa_reset_audit_test.sql` reports 4/4 passing.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/0055_mfa_reset_audit.sql supabase/tests/0055_mfa_reset_audit_test.sql
-git commit --no-verify -F - -- supabase/migrations/0055_mfa_reset_audit.sql supabase/tests/0055_mfa_reset_audit_test.sql <<'EOF'
+git add supabase/migrations/0056_mfa_reset_audit.sql supabase/tests/0056_mfa_reset_audit_test.sql
+git commit --no-verify -F - -- supabase/migrations/0056_mfa_reset_audit.sql supabase/tests/0056_mfa_reset_audit_test.sql <<'EOF'
 feat(db): audit every MFA reset
 
 Clearing someone's second factor deliberately weakens their account, so it
@@ -581,7 +581,7 @@ person, confirm. Their TOTP factor is cleared, they are signed out everywhere,
 and they sign in with their password and enrol a new authenticator.
 
 Managers can reset each other, which is why the database requires at least two
-active managers (migration 0054). Nobody can reset themselves.
+active managers (migration 0055). Nobody can reset themselves.
 
 **If you are down to one manager**, no one in the app can unlock them. Recover
 from the Supabase dashboard: Authentication → Users → the user → remove the MFA
@@ -1280,10 +1280,10 @@ EOF
 
 ## Final verification
 
-- [ ] `supabase test db` — 0054 (8) and 0055 (4) pass. `0015_powersync` fails 15/15 for pre-existing reasons; judge per-file, not by exit code.
+- [ ] `supabase test db` — 0055 (8) and 0056 (4) pass. `0015_powersync` fails 15/15 for pre-existing reasons; judge per-file, not by exit code.
 - [ ] `flutter analyze` in `apps/amuwak_staff` and `packages/amuwak_core` — `No issues found!`
 - [ ] `flutter test --timeout=none` in `apps/amuwak_staff` — full suite green (877 before this plan).
-- [ ] **`supabase db push`** — apply 0054 and 0055 to production.
+- [ ] **`supabase db push`** — apply 0055 and 0056 to production.
 - [ ] `supabase functions deploy reset-staff-mfa`, then work Task 3 Step 3's seven manual checks against the real project.
 - [ ] Confirm a second active manager exists in production before enforcing `aal2`.
 
@@ -1293,13 +1293,13 @@ EOF
 different routes and only the app is automatic: merging to `main` fires
 `deploy-pwa.yml` on push, while `db push` and `functions deploy` are manual.
 
-If the function reaches production before 0055, every reset succeeds, returns
+If the function reaches production before 0056, every reset succeeds, returns
 200, and writes nothing — the audit table it needs does not exist yet, and the
 insert failure is logged server-side where no operator is looking. That is
-exactly the invisibility 0055 was added to prevent. If the app merges first,
+exactly the invisibility 0056 was added to prevent. If the app merges first,
 managers simply get an error when they tap through, which is recoverable and
 obvious.
 
-(An earlier draft added a third migration, 0056, here. It was written against a
+(An earlier draft added a third migration here. It was written against a
 premise that turned out to be false and closed no live hole — see the correction
-at the top of this plan — so it was dropped. Only 0054 and 0055 ship.)
+at the top of this plan — so it was dropped. Only 0055 and 0056 ship.)

@@ -9,7 +9,7 @@ SET search_path TO extensions, public;
 SELECT plan(2);
 
 -- Seed a throwaway staff member and point the singleton settings row at them.
--- Role is deliberately not 'manager': migration 0054 forbids dropping below
+-- Role is deliberately not 'manager': migration 0055 forbids dropping below
 -- two active managers, and this row gets deleted below.
 INSERT INTO public.staff (id, username, display_name, role) VALUES
   ('00000000-0000-0000-0000-000000002000', 'pricing_fk_mgr', 'Pricing FK Mgr', 'in_shop');

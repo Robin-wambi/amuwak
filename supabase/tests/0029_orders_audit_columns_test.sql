@@ -15,7 +15,7 @@ SELECT has_column('public', 'orders', 'deleted_by', 'orders.deleted_by exists');
 -- Two staff: the creator backs the NOT NULL created_by/intake_recorded_by FKs
 -- (which we must NOT delete), the auditor backs the new nullable audit columns
 -- (which we delete to exercise ON DELETE SET NULL).
--- audit_actor's role is deliberately not 'manager': migration 0054 forbids
+-- audit_actor's role is deliberately not 'manager': migration 0055 forbids
 -- dropping below two active managers, and this row gets deleted below.
 INSERT INTO public.staff (id, username, display_name, role) VALUES
   ('00000000-0000-0000-0000-000000002600', 'audit_creator', 'Audit Creator', 'in_shop'),

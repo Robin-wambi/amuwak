@@ -1,4 +1,4 @@
--- 0055_mfa_reset_audit_test.sql
+-- 0056_mfa_reset_audit_test.sql
 -- Clearing someone's second factor deliberately weakens their account, so it
 -- must leave a record. Managers may read that record; nobody else may, and no
 -- client may write it.

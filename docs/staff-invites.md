@@ -83,7 +83,7 @@ confirmed by the function's manual deployment check, not by anything in this
 repo).
 
 Managers can reset each other, which is why the database requires at least two
-active managers (migration 0054). Nobody can reset themselves.
+active managers (migration 0055). Nobody can reset themselves.
 
 A manager who has enrolled their own TOTP must complete their own two-factor
 check (be at `aal2`) before they can clear someone else's — if you're a
@@ -103,7 +103,7 @@ role — role changes are not editable from the app.
 **Deploying, in this order:**
 
 ```bash
-supabase db push                              # 0054, 0055
+supabase db push                              # 0055, 0056
 supabase functions deploy reset-staff-mfa
 # then merge — the staff app auto-deploys on push to main
 ```
