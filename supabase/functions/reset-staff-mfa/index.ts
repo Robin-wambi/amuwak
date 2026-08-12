@@ -33,15 +33,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { corsHeadersFor } from '../_shared/cors.ts';
 
-/// Reads a claim out of the bearer token without verifying its signature. Safe
-/// only because getUser() verified this exact token string and established
-/// [expectedSub] from it; this reads `aal`, which getUser does not surface.
-///
-/// [expectedSub] makes that invariant explicit rather than positional. Rule 2
-/// is the rule that stops a stolen password from stripping 2FA off an account,
-/// and it has already regressed once — if a future refactor threads a different
-/// token in here, this returns null and the caller fails CLOSED instead of the
-/// rule silently evaporating.
 /// Records a REFUSED attempt on the platform log.
 ///
 /// Deliberately not a row in `mfa_reset_audit`. That table records what a reset
@@ -60,6 +51,15 @@ function denied(reason: string, detail: Record<string, unknown>): void {
   console.warn('reset-staff-mfa: denied', { reason, ...detail });
 }
 
+/// Reads a claim out of the bearer token without verifying its signature. Safe
+/// only because getUser() verified this exact token string and established
+/// [expectedSub] from it; this reads `aal`, which getUser does not surface.
+///
+/// [expectedSub] makes that invariant explicit rather than positional. Rule 2
+/// is the rule that stops a stolen password from stripping 2FA off an account,
+/// and it has already regressed once — if a future refactor threads a different
+/// token in here, this returns null and the caller fails CLOSED instead of the
+/// rule silently evaporating.
 function aalFromJwt(token: string, expectedSub: string): string | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
