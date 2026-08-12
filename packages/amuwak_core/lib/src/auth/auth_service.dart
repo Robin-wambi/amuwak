@@ -1,8 +1,19 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthFailure implements Exception {
-  AuthFailure(this.message);
+  AuthFailure(this.message, {this.retryable = false});
   final String message;
+
+  /// True when the call never reached a verdict — a timeout, a dropped
+  /// connection, a 5xx. The distinction matters to whoever is reading the
+  /// error: "try again" is sound advice for these and actively misleading for
+  /// a rejected credential, which no amount of retrying will fix.
+  ///
+  /// Only [MfaService] sets this today. `AuthRetryableFetchException` extends
+  /// `AuthException`, so without it a dropped connection and a wrong code are
+  /// indistinguishable to callers.
+  final bool retryable;
+
   @override
   String toString() => 'AuthFailure: $message';
 }

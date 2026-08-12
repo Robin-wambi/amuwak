@@ -1,0 +1,447 @@
+import 'dart:async';
+
+import 'package:amuwak_core/amuwak_core.dart';
+import 'package:amuwak_staff/src/auth/mfa_enrolment_screen.dart';
+import 'package:amuwak_staff/src/auth/recovery_codes_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class _MockMfa extends Mock implements MfaService {}
+
+class _MockRecovery extends Mock implements RecoveryCodesService {}
+
+const _enrolment = TotpEnrolment(
+  factorId: 'factor-1',
+  otpauthUri: 'otpauth://totp/Amuwak:rider1?secret=JBSWY3DPEHPK3PXP',
+  secret: 'JBSWY3DPEHPK3PXP',
+);
+
+Factor _verified(String id) => Factor(
+      id: id,
+      status: FactorStatus.verified,
+      factorType: FactorType.totp,
+      friendlyName: 'Authenticator',
+      updatedAt: DateTime(2026, 1, 1),
+      createdAt: DateTime(2026, 1, 1),
+    );
+
+void main() {
+  late _MockMfa mfa;
+  late _MockRecovery recovery;
+  int completed = 0;
+  bool? lastEnabled;
+
+  setUp(() {
+    mfa = _MockMfa();
+    completed = 0;
+    lastEnabled = null;
+    // Default: nothing enrolled yet, so the screen goes straight to setup.
+    when(() => mfa.verifiedFactors()).thenAnswer((_) async => <Factor>[]);
+    recovery = _MockRecovery();
+    when(() => recovery.generate())
+        .thenAnswer((_) async => ['AAAAA-BBBBB-CCCCC-DDDDD']);
+    when(() => recovery.clearOwn()).thenAnswer((_) async {});
+  });
+
+  Widget harness() => ProviderScope(
+        overrides: [
+          mfaServiceProvider.overrideWithValue(mfa),
+          recoveryCodesServiceProvider.overrideWithValue(recovery),
+        ],
+        child: MaterialApp(
+          theme: buildAmuwakTheme(),
+          home: MfaEnrolmentScreen(onCompleted: ({required enabled}) {
+            completed++;
+            lastEnabled = enabled;
+          }),
+        ),
+      );
+
+  void stubEnroll() {
+    when(() => mfa.enrollTotp(friendlyName: any(named: 'friendlyName')))
+        .thenAnswer((_) async => _enrolment);
+  }
+
+  testWidgets('shows a scannable code and the secret to type instead',
+      (tester) async {
+    stubEnroll();
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(QrImageView), findsOneWidget);
+    // The secret is shown too: a cracked screen or a desktop browser with no
+    // camera cannot scan, and locking those staff out of MFA is worse than
+    // displaying the secret they already control.
+    expect(find.textContaining('JBSWY3DPEHPK3PXP'), findsOneWidget);
+  });
+
+  testWidgets('reports a failure to start enrolment', (tester) async {
+    when(() => mfa.enrollTotp(friendlyName: any(named: 'friendlyName')))
+        .thenThrow(AuthFailure('already enrolled'));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not start'), findsOneWidget);
+    expect(find.byType(QrImageView), findsNothing);
+  });
+
+  testWidgets('will not submit a code that is not six digits', (tester) async {
+    stubEnroll();
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    // Specifically the validator message — the instruction copy above the QR
+    // also mentions "6-digit", so textContaining would match both.
+    expect(find.text('Enter the 6-digit code'), findsOneWidget);
+    verifyNever(() => mfa.submitCode(
+        factorId: any(named: 'factorId'), code: any(named: 'code')));
+  });
+
+  testWidgets('activates the factor and reports completion', (tester) async {
+    stubEnroll();
+    when(() => mfa.submitCode(
+        factorId: any(named: 'factorId'),
+        code: any(named: 'code'))).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    verify(() => mfa.submitCode(factorId: 'factor-1', code: '123456'))
+        .called(1);
+    // Completion now waits on the recovery-codes handoff — see "hands over
+    // the recovery codes before reporting success" below.
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+
+    expect(completed, 1);
+    expect(lastEnabled, isTrue);
+  });
+
+  testWidgets('offers to turn it off when a factor is already enrolled',
+      (tester) async {
+    // Enrolling again would collide on the friendly name and dead-end at a
+    // generic "could not start" error, which is what someone tapping the
+    // Account entry a second time used to get.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    stubEnroll();
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('is on'), findsOneWidget);
+    expect(find.text('Turn off'), findsOneWidget);
+    expect(find.byType(QrImageView), findsNothing);
+    verifyNever(() => mfa.enrollTotp(friendlyName: any(named: 'friendlyName')));
+  });
+
+  testWidgets('turning it off unenrols the factor', (tester) async {
+    // The lockout escape hatch stops needing a manager in the Supabase
+    // dashboard: removeFactor was written and tested but reachable from
+    // nowhere in the app.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any())).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    verify(() => mfa.removeFactor('factor-1')).called(1);
+    expect(completed, 1);
+    expect(lastEnabled, isFalse);
+  });
+
+  testWidgets('turning it off also clears the codes minted for that factor',
+      (tester) async {
+    // Codes outlive the factor otherwise: the mint replaces a set only when a
+    // new one succeeds, so a later re-enrol whose mint fails would leave these
+    // live against the new factor — an MFA bypass for anyone holding the paper
+    // the user stopped guarding the moment they turned two-factor off.
+    //
+    // The ORDER is the load-bearing part. Clearing before the factor is
+    // confirmed gone would destroy the recovery path while two-factor is still
+    // on, which is a self-inflicted lockout rather than a tidy-up.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any())).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    verifyInOrder([
+      () => mfa.removeFactor('factor-1'),
+      () => recovery.clearOwn(),
+    ]);
+  });
+
+  testWidgets('a failed clear still reports two-factor as off', (tester) async {
+    // The factor is already gone by then. Reporting failure would tell the
+    // user two-factor is still on when it is not — the same lie as the
+    // turn-off failure case, pointing the other way.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any())).thenAnswer((_) async {});
+    when(() => recovery.clearOwn())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    expect(completed, 1);
+    expect(lastEnabled, isFalse);
+    expect(find.textContaining('Could not turn'), findsNothing);
+  });
+
+  testWidgets('a cancelled turn-off leaves the factor alone', (tester) async {
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    verifyNever(() => mfa.removeFactor(any()));
+    expect(completed, 0);
+  });
+
+  testWidgets('reports a turn-off that failed instead of closing',
+      (tester) async {
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+    when(() => mfa.removeFactor(any()))
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Turn off'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    // Closing on failure would tell the user two-factor is off while it is
+    // still very much on.
+    expect(completed, 0);
+    expect(find.textContaining('Could not turn'), findsOneWidget);
+    // And the codes must survive: wiping them here would strip the recovery
+    // path off an account whose factor is still very much enrolled.
+    verifyNever(() => recovery.clearOwn());
+  });
+
+  testWidgets('keeps the form usable after a wrong code', (tester) async {
+    stubEnroll();
+    when(() => mfa.submitCode(
+            factorId: any(named: 'factorId'), code: any(named: 'code')))
+        .thenThrow(AuthFailure('Invalid TOTP code entered'));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '000000');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    // A mistyped code is the common case, not an exceptional one — the codes
+    // rotate every 30s, so the retry has to stay right there.
+    expect(find.textContaining('did not match'), findsOneWidget);
+    expect(completed, 0);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNotNull);
+  });
+
+  testWidgets('does not blame the code when it was the network that failed',
+      (tester) async {
+    stubEnroll();
+    when(() => mfa.submitCode(
+            factorId: any(named: 'factorId'), code: any(named: 'code')))
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('did not match'), findsNothing);
+    expect(find.textContaining('Could not reach the server'), findsOneWidget);
+    expect(completed, 0);
+  });
+
+  testWidgets('locks the button while verifying', (tester) async {
+    stubEnroll();
+    final pending = Completer<void>();
+    when(() => mfa.submitCode(
+        factorId: any(named: 'factorId'),
+        code: any(named: 'code'))).thenAnswer((_) => pending.future);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pump();
+
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull);
+
+    pending.complete();
+    await tester.pumpAndSettle();
+    verify(() => mfa.submitCode(
+        factorId: any(named: 'factorId'), code: any(named: 'code'))).called(1);
+  });
+
+  testWidgets('hands over the recovery codes before reporting success',
+      (tester) async {
+    // Enrolling without codes creates exactly the lockout this feature exists
+    // to prevent, so completion waits until the user has them.
+    stubEnroll();
+    when(() => mfa.submitCode(
+        factorId: any(named: 'factorId'),
+        code: any(named: 'code'))).thenAnswer((_) async {});
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    expect(completed, 0, reason: 'not done until the codes are acknowledged');
+
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+
+    expect(completed, 1);
+    expect(lastEnabled, isTrue);
+  });
+
+  testWidgets('an enrolled user can replace their recovery codes',
+      (tester) async {
+    // Someone who used a code, or lost the paper, needs a fresh set without
+    // having to turn two-factor off and on again.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Replace recovery codes'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    verify(() => recovery.generate()).called(1);
+
+    await tester.tap(find.text("I've saved these"));
+    await tester.pumpAndSettle();
+
+    // Replacing codes is not the same as turning two-factor off.
+    expect(completed, 0);
+    expect(find.text('Turn off'), findsOneWidget);
+  });
+
+  testWidgets(
+      'backing out of the recovery-codes handover during enrolment does not '
+      'report completion, and leaves a way to get codes', (tester) async {
+    // RecoveryCodesScreen can close before the user ever acknowledges seeing
+    // codes (its error state's Close action, or a system-back pop before
+    // minting finishes). Two-factor genuinely IS on at that point — the code
+    // already verified below, before _handOverRecoveryCodes ever runs — so
+    // this must not pretend otherwise. But onCompleted(enabled: true) must
+    // not fire either: that would report an account as usably protected when
+    // no recovery code was ever shown, which is the exact lockout this
+    // feature exists to prevent.
+    stubEnroll();
+    when(() => mfa.submitCode(
+        factorId: any(named: 'factorId'),
+        code: any(named: 'code'))).thenAnswer((_) async {});
+    when(() => recovery.generate())
+        .thenThrow(AuthFailure('connection closed', retryable: true));
+    // First call (initState) must report nothing enrolled, so the screen
+    // reaches the setup/QR stage. The second call — made by _start() when
+    // _handOverRecoveryCodes re-checks after the bail-out — must report the
+    // factor as verified: submitCode() already succeeded server-side by
+    // then, same as it would for a real account.
+    var verifiedCalls = 0;
+    when(() => mfa.verifiedFactors()).thenAnswer((_) async {
+      verifiedCalls += 1;
+      return verifiedCalls == 1 ? <Factor>[] : [_verified('factor-1')];
+    });
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.text('Activate'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    expect(find.textContaining('Could not create'), findsOneWidget);
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsNothing);
+    expect(completed, 0,
+        reason: 'no recovery code was ever shown and saved');
+    // The screen settles back onto the enrolled stage, which is where
+    // "Replace recovery codes" lives — the user's way to still get a set.
+    expect(find.text('Replace recovery codes'), findsOneWidget);
+    expect(find.textContaining('you have not saved recovery codes yet'),
+        findsOneWidget);
+  });
+
+  testWidgets('a rapid double tap on Replace recovery codes only pushes one '
+      'screen', (tester) async {
+    // Without a real _busy guard, two taps delivered before the first frame
+    // rebuild both push a RecoveryCodesScreen. The second mint deletes the
+    // first set server-side, so acknowledging the (now stale) first screen
+    // and popping back to a second, live one would show codes that already
+    // do not work.
+    when(() => mfa.verifiedFactors())
+        .thenAnswer((_) async => [_verified('factor-1')]);
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Replace recovery codes'));
+    await tester.tap(find.text('Replace recovery codes'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecoveryCodesScreen), findsOneWidget);
+    verify(() => recovery.generate()).called(1);
+  });
+}

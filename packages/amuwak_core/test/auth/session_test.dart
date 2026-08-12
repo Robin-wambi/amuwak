@@ -10,6 +10,8 @@ import 'package:amuwak_core/amuwak_core.dart';
 
 class _MockAuthService extends Mock implements AuthService {}
 
+class _MockMfaService extends Mock implements MfaService {}
+
 class _MockUser extends Mock implements User {}
 
 /// Builds an unsigned JWT (header.payload.signature) carrying [claims]. The
@@ -153,6 +155,64 @@ void main() {
       addTearDown(container.dispose);
 
       expect(container.read(currentAuthEventProvider), isNull);
+    });
+  });
+
+  group('needsMfaChallengeProvider', () {
+    ProviderContainer containerWith(
+      MfaService mfa, {
+      Stream<AuthState>? authEvents,
+    }) {
+      final container = ProviderContainer(overrides: [
+        mfaServiceProvider.overrideWithValue(mfa),
+        authStateProvider
+            .overrideWith((ref) => authEvents ?? const Stream<AuthState>.empty()),
+      ]);
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    test('reports the challenge the service says this session owes', () {
+      final mfa = _MockMfaService();
+      when(() => mfa.needsChallenge).thenReturn(true);
+
+      expect(containerWith(mfa).read(needsMfaChallengeProvider), isTrue);
+    });
+
+    test('recomputes when a new auth event lands', () async {
+      // Clearing the challenge upgrades the session to aal2 and raises
+      // mfaChallengeVerified. Nothing navigates on success, so the gate only
+      // moves on if this provider notices that event.
+      final controller = StreamController<AuthState>();
+      addTearDown(controller.close);
+      final mfa = _MockMfaService();
+      var owed = true;
+      when(() => mfa.needsChallenge).thenAnswer((_) => owed);
+
+      final container = containerWith(mfa, authEvents: controller.stream);
+      final sub = container.listen(needsMfaChallengeProvider, (_, __) {});
+      addTearDown(sub.close);
+
+      controller.add(AuthState(AuthChangeEvent.signedIn, null));
+      await Future<void>.delayed(Duration.zero);
+      expect(sub.read(), isTrue);
+
+      owed = false;
+      controller.add(AuthState(AuthChangeEvent.mfaChallengeVerified, null));
+      await Future<void>.delayed(Duration.zero);
+      expect(sub.read(), isFalse);
+    });
+
+    test('falls open to false when the assurance level cannot be read', () {
+      // getAuthenticatorAssuranceLevel parses the access token and casts its
+      // `amr` claim; a malformed or claim-stripped token throws. AuthGate reads
+      // this provider straight from build(), so letting that escape replaces
+      // the entire app with a red error screen — no dashboard, no login, not
+      // even a way to sign out. MFA is opt-in, so false is the safe direction.
+      final mfa = _MockMfaService();
+      when(() => mfa.needsChallenge).thenThrow(StateError('no amr claim'));
+
+      expect(containerWith(mfa).read(needsMfaChallengeProvider), isFalse);
     });
   });
 }
