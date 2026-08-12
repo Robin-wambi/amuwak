@@ -43,17 +43,20 @@ GRANT DELETE, INSERT, SELECT, UPDATE ON carts TO authenticated;
 GRANT DELETE, INSERT, SELECT, UPDATE ON customers TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON expenses TO authenticated;
 GRANT INSERT, SELECT ON issues TO authenticated;
--- order_messages is generated as INSERT, SELECT, UPDATE — the UPDATE comes
--- from order_messages_mark_read (0046), a row-level policy that authorizes
--- updating a visible message but says nothing about which COLUMN. Table-wide
--- UPDATE here would re-grant exactly what 0046 revoked on purpose (REVOKE
--- UPDATE ON order_messages FROM anon, authenticated) to stop a customer
--- rewriting a staff reply's body or forging its sender. 0046's column grant
--- (GRANT UPDATE (read_at) ON order_messages TO authenticated) is untouched by
--- the REVOKE ALL above — table and column ACLs are separate catalogs, and
--- REVOKE ALL ON a table does not reach into pg_attribute — so leaving UPDATE
--- out of this line is enough to keep the narrower grant as the only one.
+-- order_messages generates as INSERT, SELECT, UPDATE — the UPDATE comes from
+-- order_messages_mark_read (0046), a row-level policy that authorizes
+-- updating a visible message but says nothing about which COLUMN. Verbatim
+-- table-wide UPDATE here would re-grant exactly what 0046 revoked on purpose
+-- (REVOKE UPDATE ON order_messages FROM anon, authenticated) to stop a
+-- customer rewriting a staff reply's body or forging its sender, so this
+-- table's UPDATE is column-scoped instead, matching 0046 exactly.
+--
+-- The REVOKE ALL above DOES remove 0046's original column grant along with
+-- everything else — table and column ACLs are separate catalogs, but ALL
+-- covers both — so it must be re-granted explicitly here, not assumed to
+-- survive.
 GRANT INSERT, SELECT ON order_messages TO authenticated;
+GRANT UPDATE (read_at) ON order_messages TO authenticated;
 GRANT INSERT, SELECT ON order_status_events TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON orders TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON pricing_catalog_items TO authenticated;
