@@ -119,6 +119,38 @@ void main() {
     expect(find.text('Reset two-factor'), findsOneWidget);
   });
 
+  testWidgets('a reset that lands after the screen is gone does not crash',
+      (tester) async {
+    // A session expiry or a sign-out swaps the whole tree while the round trip
+    // is still open. Capturing the messenger before the await is what keeps
+    // this off the `use_build_context_synchronously` lint, but it does not make
+    // the call safe: that messenger has no Scaffolds under it any more, and
+    // showSnackBar asserts `_scaffolds.isNotEmpty` rather than no-opping.
+    // Without the `mounted` re-check this test fails with that assertion,
+    // thrown from _runConfirmAndReset itself.
+    final gate = Completer<int>();
+    await tester.pumpWidget(
+      harness(onReset: ({required staffId}) => gate.future),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Rider One'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset two-factor'));
+    await tester.pump();
+
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: Text('signed out'))),
+    );
+    await tester.pumpAndSettle();
+
+    gate.complete(1);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('signed out'), findsOneWidget);
+  });
+
   testWidgets('says plainly when there was nothing to clear', (tester) async {
     await tester.pumpWidget(harness(onReset: ({required staffId}) async => 0));
     await tester.pumpAndSettle();

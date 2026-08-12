@@ -95,21 +95,33 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen> {
     if (confirmed != true) return;
     if (!mounted) return;
 
+    // Captured before the await to stay off `use_build_context_synchronously`,
+    // and that is ALL it buys. If a sign-out or session expiry swaps the tree
+    // while the round trip is open, this handle refers to a messenger with no
+    // Scaffolds left under it, and showSnackBar asserts on exactly that
+    // (`_scaffolds.isNotEmpty`) rather than failing quietly. Hence the
+    // `mounted` re-check below — the idiom the dashboard already uses.
     final messenger = ScaffoldMessenger.of(context);
+
+    // Decide the message first, show it once. Three separate snackbar calls
+    // would each need their own guard, and the one that got forgotten would be
+    // the one that fired.
+    //
+    // Not `final`: Dart rejects a final local assigned in both a try and its
+    // catch, since the try could throw after assigning.
+    String message;
     try {
       final cleared = await widget.onReset(staffId: member.id);
-      messenger.showSnackBar(SnackBar(
-        content: Text(cleared == 0
-            ? '${member.displayName} had no two-factor set up.'
-            : 'Cleared two-factor for ${member.displayName}.'),
-      ));
+      message = cleared == 0
+          ? '${member.displayName} had no two-factor set up.'
+          : 'Cleared two-factor for ${member.displayName}.';
     } on ResetMfaFailure catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      message = e.message;
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(
-        content: Text('Could not reset their two-factor. Please try again.'),
-      ));
+      message = 'Could not reset their two-factor. Please try again.';
     }
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
