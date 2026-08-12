@@ -49,30 +49,19 @@ GRANT INSERT, SELECT ON issues TO authenticated;
 -- table-wide UPDATE here would re-grant exactly what 0046 revoked on purpose
 -- (REVOKE UPDATE ON order_messages FROM anon, authenticated) to stop a
 -- customer rewriting a staff reply's body or forging its sender, so this
--- table's UPDATE is column-scoped instead, matching 0046 exactly.
+-- table's UPDATE is column-scoped instead, matching 0046 exactly. (Verified,
+-- not assumed: a table-wide GRANT plus a per-column REVOKE was tried and does
+-- not narrow anything — a role holding the table-level privilege has it on
+-- every column regardless of any column-level REVOKE; column grants only ever
+-- ADD access a missing table-level privilege doesn't cover, never subtract
+-- from one already held. See task-2-report.md for the CI runs that pinned
+-- this down, and 0057_table_grants_test.sql's header for why assertion 1
+-- accepts a column grant as equivalent to a table grant.)
 --
 -- The REVOKE ALL above DOES remove 0046's original column grant along with
 -- everything else — table and column ACLs are separate catalogs, but ALL
 -- covers both — so it must be re-granted explicitly here, not assumed to
 -- survive.
---
--- Table-wide GRANT plus a per-column REVOKE was tried and does not work: a
--- role holding the table-level privilege has it on every column regardless of
--- any column-level REVOKE (verified against this exact table — CI run
--- 31610783374 reopened the tamper hole with that combination). Column grants
--- only ever ADD access beyond a missing table-level privilege; they cannot
--- SUBTRACT from one already held. So a table can have table-wide UPDATE, or a
--- true column restriction, never both, and this table needs the restriction.
---
--- Consequence for 0057_table_grants_test.sql assertion 1: has_table_privilege
--- checks pg_class.relacl only, never pg_attribute.attacl (confirmed the same
--- way — CI run 31610175495 showed "policy, no grant" for
--- (order_messages, UPDATE) with the column grant already live and working).
--- A policy naming UPDATE can never read back as "granted" through a
--- column-only privilege, so this one (table, verb) pair fails assertion 1 by
--- construction, not by an incomplete matrix. Widening it to a table-level
--- grant would pass assertion 1 and fail 0046's tamper tests instead — see
--- task-2-report.md for why this migration keeps the security property.
 GRANT INSERT, SELECT ON order_messages TO authenticated;
 GRANT UPDATE (read_at) ON order_messages TO authenticated;
 GRANT INSERT, SELECT ON order_status_events TO authenticated;

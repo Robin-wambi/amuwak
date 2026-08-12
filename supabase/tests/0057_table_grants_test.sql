@@ -6,6 +6,16 @@
 -- Deliberately generic. Naming tables here would mean a seventeenth table could
 -- be added with no grants and no failure — the exact gap this file exists to
 -- close.
+--
+-- "Grant" means table-level OR column-level. RLS gates rows, never columns, so
+-- a policy that should only ever touch one column (0046_customer_rls.sql's
+-- order_messages_mark_read: a customer may mark a staff reply read but must
+-- never rewrite its body or forge its sender) cannot rely on the policy for
+-- that — the column grant is the only thing enforcing it, on purpose,
+-- REVOKEd at the table level and re-GRANTed on that one column. A table-only
+-- check would demand a table-wide grant here and defeat the column scoping
+-- that makes the restriction real, so a verb counts as granted if EITHER a
+-- table-level or an at-least-one-column-level grant exists.
 BEGIN;
 SET search_path TO extensions, public;
 
@@ -28,9 +38,15 @@ SELECT is_empty($$
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) AS v(verb)
-     WHERE n.nspname = 'public'
-       AND c.relkind = 'r'
-       AND has_table_privilege('authenticated', c.oid, v.verb)
+     WHERE n.nspname = 'public' AND c.relkind = 'r'
+       AND (
+         has_table_privilege('authenticated', c.oid, v.verb)
+         OR EXISTS (
+           SELECT 1 FROM pg_attribute a
+            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+              AND has_column_privilege('authenticated', c.oid, a.attnum, v.verb)
+         )
+       )
   )
   (SELECT tbl, verb, 'granted, no policy' AS problem FROM granted
     EXCEPT
