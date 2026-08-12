@@ -1484,6 +1484,44 @@ void main() {
   );
 
   testWidgets(
+    'Account tab offers the Staff list to managers only',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        currentRoleProvider.overrideWith((ref) => 'manager'),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Staff'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Account tab hides the Staff list from drivers',
+    (tester) async {
+      // Gated on the JWT claim, not auth_staff_role() — 0039 widened that one
+      // to call drivers managers.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        currentRoleProvider.overrideWith((ref) => 'driver'),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Staff'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'Account tab shows Pricing settings for the manager role',
     (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
