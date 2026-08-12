@@ -16,6 +16,12 @@
 -- check would demand a table-wide grant here and defeat the column scoping
 -- that makes the restriction real, so a verb counts as granted if EITHER a
 -- table-level or an at-least-one-column-level grant exists.
+--
+-- The column check is gated to SELECT/INSERT/UPDATE: DELETE and TRUNCATE
+-- have no per-column form (a DELETE removes a whole row, never a column), and
+-- has_column_privilege raises "unrecognized privilege type" if asked about
+-- one. Table-level is the only kind DELETE can ever have, so it needs no
+-- column fallback.
 BEGIN;
 SET search_path TO extensions, public;
 
@@ -41,10 +47,13 @@ SELECT is_empty($$
      WHERE n.nspname = 'public' AND c.relkind = 'r'
        AND (
          has_table_privilege('authenticated', c.oid, v.verb)
-         OR EXISTS (
-           SELECT 1 FROM pg_attribute a
-            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-              AND has_column_privilege('authenticated', c.oid, a.attnum, v.verb)
+         OR (
+           v.verb IN ('SELECT','INSERT','UPDATE')
+           AND EXISTS (
+             SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                AND has_column_privilege('authenticated', c.oid, a.attnum, v.verb)
+           )
          )
        )
   )
