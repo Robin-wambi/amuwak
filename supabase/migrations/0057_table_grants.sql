@@ -43,7 +43,17 @@ GRANT DELETE, INSERT, SELECT, UPDATE ON carts TO authenticated;
 GRANT DELETE, INSERT, SELECT, UPDATE ON customers TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON expenses TO authenticated;
 GRANT INSERT, SELECT ON issues TO authenticated;
-GRANT INSERT, SELECT, UPDATE ON order_messages TO authenticated;
+-- order_messages is generated as INSERT, SELECT, UPDATE — the UPDATE comes
+-- from order_messages_mark_read (0046), a row-level policy that authorizes
+-- updating a visible message but says nothing about which COLUMN. Table-wide
+-- UPDATE here would re-grant exactly what 0046 revoked on purpose (REVOKE
+-- UPDATE ON order_messages FROM anon, authenticated) to stop a customer
+-- rewriting a staff reply's body or forging its sender. 0046's column grant
+-- (GRANT UPDATE (read_at) ON order_messages TO authenticated) is untouched by
+-- the REVOKE ALL above — table and column ACLs are separate catalogs, and
+-- REVOKE ALL ON a table does not reach into pg_attribute — so leaving UPDATE
+-- out of this line is enough to keep the narrower grant as the only one.
+GRANT INSERT, SELECT ON order_messages TO authenticated;
 GRANT INSERT, SELECT ON order_status_events TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON orders TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON pricing_catalog_items TO authenticated;
