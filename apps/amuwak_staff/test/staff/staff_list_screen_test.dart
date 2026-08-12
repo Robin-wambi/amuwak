@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_staff/src/data/app_database.dart';
 import 'package:amuwak_staff/src/staff/reset_staff_mfa_service.dart';
@@ -67,6 +69,54 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(called, 1);
+  });
+
+  testWidgets('the row is inert while that reset is still in flight',
+      (tester) async {
+    // The reset is a network round trip, and this is the one screen used from
+    // the shop floor on whatever connection the shop has. Nothing about the
+    // list says a reset is running — the dialog is gone, the row looks
+    // untouched — so tapping again is the obvious thing to do, and without a
+    // guard it starts a second concurrent reset of the same person. That one
+    // clears nothing, reports "had no two-factor set up" about the very rider
+    // whose factor was just removed, and lands a factors_cleared = 0 row in an
+    // audit log whose whole job is to record what actually happened.
+    //
+    // Note this is deliberately NOT a same-frame double-tap test. Three
+    // attempts at one (two tap() calls with no pump, and raw same-frame
+    // TestPointer events) all produced exactly one dialog: tap() pumps
+    // internally and the pushed route's modal barrier absorbs the second
+    // press, so such a test passes with or without the guard. The in-flight
+    // window below is the reachable version of the same defect, and it fails
+    // without the `_busy` guard.
+    final gate = Completer<int>();
+    var called = 0;
+    await tester.pumpWidget(harness(onReset: ({required staffId}) {
+      called++;
+      return gate.future;
+    }));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Rider One'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset two-factor'));
+    await tester.pump();
+    expect(called, 1);
+
+    await tester.tap(find.text('Rider One'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('Reset two-factor'), findsNothing,
+        reason: 'a reset is in flight, so the row must not offer another');
+    expect(called, 1);
+
+    // And the row works again once the reset lands.
+    gate.complete(1);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Cleared two-factor'), findsOneWidget);
+
+    await tester.tap(find.text('Rider One'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset two-factor'), findsOneWidget);
   });
 
   testWidgets('says plainly when there was nothing to clear', (tester) async {

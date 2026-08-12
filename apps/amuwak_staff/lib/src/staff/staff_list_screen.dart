@@ -44,7 +44,30 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen> {
   /// created rather than the failed one being reused.
   int _attempt = 0;
 
+  /// Set for the whole confirm-and-reset round trip, and it disables EVERY row
+  /// rather than the one tapped — one reset at a time is the only state this
+  /// screen has to be honest about.
+  ///
+  /// Nothing on the list says a reset is running: the dialog is gone, the row
+  /// looks untouched, and the request is a network round trip on whatever
+  /// connection the shop has. Tapping again is the obvious thing to do, and
+  /// unguarded it starts a second concurrent reset of the same person — which
+  /// clears nothing, reports "had no two-factor set up" about the rider whose
+  /// factor was just removed, and writes a factors_cleared = 0 row into a log
+  /// that exists to record what actually happened. Same guard, and the same
+  /// reasoning, as the actions on [MfaEnrolmentScreen].
+  bool _busy = false;
+
   Future<void> _confirmAndReset(StaffData member) async {
+    setState(() => _busy = true);
+    try {
+      await _runConfirmAndReset(member);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _runConfirmAndReset(StaffData member) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -129,7 +152,9 @@ class _StaffListScreenState extends ConsumerState<StaffListScreen> {
               final member = members[i];
               final isSelf = member.id == widget.currentStaffId;
               return AppCard(
-                onTap: isSelf ? null : () => _confirmAndReset(member),
+                onTap: (isSelf || _busy)
+                    ? null
+                    : () => _confirmAndReset(member),
                 child: Row(
                   children: [
                     Expanded(
