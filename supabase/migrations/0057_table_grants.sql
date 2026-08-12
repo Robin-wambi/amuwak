@@ -55,8 +55,9 @@ GRANT INSERT, SELECT ON issues TO authenticated;
 -- everything else — table and column ACLs are separate catalogs, but ALL
 -- covers both — so it must be re-granted explicitly here, not assumed to
 -- survive.
-GRANT INSERT, SELECT ON order_messages TO authenticated;
-GRANT UPDATE (read_at) ON order_messages TO authenticated;
+GRANT INSERT, SELECT, UPDATE ON order_messages TO authenticated;
+REVOKE UPDATE (id, order_id, sender_kind, sender_id, body, created_at)
+  ON order_messages FROM authenticated;
 GRANT INSERT, SELECT ON order_status_events TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON orders TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON pricing_catalog_items TO authenticated;
