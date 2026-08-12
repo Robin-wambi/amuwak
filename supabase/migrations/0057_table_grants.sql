@@ -26,6 +26,7 @@ REVOKE ALL ON customers FROM anon, authenticated, service_role;
 REVOKE ALL ON expenses FROM anon, authenticated, service_role;
 REVOKE ALL ON issues FROM anon, authenticated, service_role;
 REVOKE ALL ON mfa_recovery_codes FROM anon, authenticated, service_role;
+REVOKE ALL ON mfa_reset_audit FROM anon, authenticated, service_role;
 REVOKE ALL ON order_code_counters FROM anon, authenticated, service_role;
 REVOKE ALL ON order_messages FROM anon, authenticated, service_role;
 REVOKE ALL ON order_status_events FROM anon, authenticated, service_role;
@@ -43,6 +44,11 @@ GRANT DELETE, INSERT, SELECT, UPDATE ON carts TO authenticated;
 GRANT DELETE, INSERT, SELECT, UPDATE ON customers TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON expenses TO authenticated;
 GRANT INSERT, SELECT ON issues TO authenticated;
+-- mfa_reset_audit_manager_read (0056) is a SELECT-only policy, gating the
+-- audit log to active managers; no INSERT/UPDATE/DELETE policy exists for
+-- authenticated, matching 0056's own comment that only the service-role
+-- client (reset-staff-mfa) writes it.
+GRANT SELECT ON mfa_reset_audit TO authenticated;
 -- order_messages generates as INSERT, SELECT, UPDATE — the UPDATE comes from
 -- order_messages_mark_read (0046), a row-level policy that authorizes
 -- updating a visible message but says nothing about which COLUMN. Verbatim
@@ -89,6 +95,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON carts TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON customers TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON expenses TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON issues TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON mfa_reset_audit TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_code_counters TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_messages TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_status_events TO service_role;
