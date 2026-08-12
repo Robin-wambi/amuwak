@@ -147,13 +147,16 @@ manager's password but cannot pass that manager's second factor.
 
 ## Adding a table
 
-**Adding a table.** New tables get no client access at all — `0057` closed the
-default privileges, so `anon`, `authenticated` and `service_role` start with
-nothing. Grant what the table's RLS policies need, in the same migration that
-creates it:
+New tables get no client access at all — `0057` closed the default
+privileges, so `anon`, `authenticated` and `service_role` start with
+nothing. Grant what the table's RLS policies need, in the same migration
+that creates it:
 
 ```sql
 GRANT SELECT, INSERT ON widgets TO authenticated;
 ```
 
-The `db-tests` job enforces this for `authenticated`: the verbs granted to it must equal the verbs its policies name. It does NOT check `service_role`, so a server-side grant that gets forgotten will fail at runtime, not in CI. Forgetting the grant fails the job rather than the app.
+The `db-tests` job enforces this for `authenticated`: the verbs granted to
+it must equal the verbs its policies name, so forgetting the grant fails the
+job rather than the app. It does NOT check `service_role`, though — a
+forgotten `service_role` grant fails only at runtime, not in CI.

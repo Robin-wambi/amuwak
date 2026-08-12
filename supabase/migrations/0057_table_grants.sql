@@ -16,7 +16,7 @@
 -- with a policy and no grant is dead code; a grant with no policy is held back
 -- by RLS alone, which is exactly how the TRUNCATE hole survived.
 --
--- Revoke-then-grant rather than naming verbs to remove. `ALL` is seven
+-- Revoke-then-grant rather than naming verbs to remove. `ALL` is eight
 -- privileges and the leftovers are the dangerous ones — the lesson from 0056,
 -- where `REVOKE INSERT, UPDATE, DELETE` would have left TRUNCATE behind.
 
@@ -95,7 +95,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON carts TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON customers TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON expenses TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON issues TO service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON mfa_reset_audit TO service_role;
+-- Narrower than every other row in this block, on purpose: mfa_reset_audit is
+-- insert-only per 0056's own header, and the service-role key IS the actor
+-- being logged, so UPDATE/DELETE here would let whoever holds that key erase
+-- the record of the reset they just performed. Both reset-staff-mfa call
+-- sites (supabase/functions/reset-staff-mfa/index.ts) are bare .insert()
+-- with no .select(), so neither UPDATE nor DELETE is used by anything.
+GRANT SELECT, INSERT ON mfa_reset_audit TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_code_counters TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_messages TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON order_status_events TO service_role;

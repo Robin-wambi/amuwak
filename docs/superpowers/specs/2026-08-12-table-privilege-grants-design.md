@@ -86,7 +86,7 @@ Three parts, in order.
 REVOKE ALL ON <table> FROM anon, authenticated, service_role;
 ```
 
-Not a list of verbs to remove. `ALL` is seven privileges and the ones that
+Not a list of verbs to remove. `ALL` is eight privileges and the ones that
 matter here are the ones a hand-written list forgets. This generalises the
 lesson from `0056_mfa_reset_audit.sql`, where naming `INSERT, UPDATE, DELETE`
 would have left TRUNCATE behind.
@@ -165,10 +165,12 @@ reads a table directly before taking that away.
 production and confirm the end state matches the invariant. That query is the
 evidence that found the problem; it is also the evidence that closes it.
 
-This migration sits at the end of the pending queue. Production was last
-verified at tracker 0029, so it cannot be applied without also applying
-everything between. This design does not make that backlog worse and does not
-address it.
+Production is at `0056` and fully migrated as of 2026-08-12: `supabase
+migration list` showed it at `0053` that day, and `0054`, `0055` and `0056`
+were applied immediately after. This migration is therefore a single
+`supabase db push` of one migration once merged, not the tail of a larger
+backlog — see `docs/superpowers/plans/2026-08-12-table-privilege-grants.md`'s
+own Rollout section, which reflects the same up-to-date state.
 
 ## Sequencing
 

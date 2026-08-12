@@ -43,7 +43,7 @@ CREATE POLICY mfa_reset_audit_manager_read ON mfa_reset_audit FOR SELECT
 -- table whose entire purpose is to be the record nobody can tamper with.
 --
 -- Revoked wholesale and granted back, rather than naming the verbs to remove.
--- `ALL` here is seven privileges, and TRUNCATE is one of them: revoking only
+-- `ALL` here is eight privileges, and TRUNCATE is one of them: revoking only
 -- INSERT, UPDATE and DELETE would leave a manager able to empty the entire log
 -- in one statement, RLS notwithstanding — TRUNCATE does not consult policies.
 -- Listing what may stay is the only version of this that cannot be

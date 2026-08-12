@@ -1,10 +1,11 @@
 name: Database tests
 
 # The pgTAP suite has never run anywhere except a contributor's laptop. That is
-# 34 files and several hundred assertions covering RLS policies, SECURITY
-# DEFINER function bodies, and the privilege grants underneath them — i.e. most
-# of what stands between a driver and somebody else's data — verified only when
-# a human remembered to run it and had Docker working that day.
+# every *_test.sql file under supabase/tests and several hundred assertions
+# covering RLS policies, SECURITY DEFINER function bodies, and the privilege
+# grants underneath them — i.e. most of what stands between a driver and
+# somebody else's data — verified only when a human remembered to run it and
+# had Docker working that day.
 #
 # It is also the one suite a Flutter workflow cannot stand in for: these are
 # assertions about Postgres, and the app tests mock the database away entirely.
@@ -37,9 +38,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned, not `latest`: this repo pins deliberately elsewhere too (see
+      # the `@supabase/supabase-js@2.45.4` import and its comment in
+      # supabase/functions/reset-staff-mfa/index.ts). An unpinned CLI lets a
+      # vendor regression turn this branch red with no change on our side —
+      # and this job is the only thing that runs the pgTAP suite at all.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.114.0
 
       # The full stack, deliberately, with nothing excluded. Trimming services
       # to save time is a false economy here: `storage-api` owns the

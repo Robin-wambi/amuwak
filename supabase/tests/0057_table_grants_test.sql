@@ -21,7 +21,10 @@
 -- have no per-column form (a DELETE removes a whole row, never a column), and
 -- has_column_privilege raises "unrecognized privilege type" if asked about
 -- one. Table-level is the only kind DELETE can ever have, so it needs no
--- column fallback.
+-- column fallback. The gate below is a CASE, not an AND: Postgres does not
+-- guarantee the evaluation order of an AND's operands, but a CASE's branches
+-- ARE evaluated in order, so `CASE WHEN verb = 'DELETE' THEN false` is what
+-- actually stops has_column_privilege from ever being called on DELETE.
 BEGIN;
 SET search_path TO extensions, public;
 
@@ -44,17 +47,14 @@ SELECT is_empty($$
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE']) AS v(verb)
-     WHERE n.nspname = 'public' AND c.relkind = 'r'
+     WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
        AND (
          has_table_privilege('authenticated', c.oid, v.verb)
-         OR (
-           v.verb IN ('SELECT','INSERT','UPDATE')
-           AND EXISTS (
-             SELECT 1 FROM pg_attribute a
-              WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-                AND has_column_privilege('authenticated', c.oid, a.attnum, v.verb)
-           )
-         )
+         OR CASE WHEN v.verb = 'DELETE' THEN false ELSE EXISTS (
+           SELECT 1 FROM pg_attribute a
+            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+              AND has_column_privilege('authenticated', c.oid, a.attnum, v.verb)
+         ) END
        )
   )
   (SELECT tbl, verb, 'granted, no policy' AS problem FROM granted
@@ -75,21 +75,24 @@ SELECT is_empty($$
     CROSS JOIN unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE',
                             'TRUNCATE','REFERENCES','TRIGGER']) AS v(verb)
    WHERE n.nspname = 'public'
-     AND c.relkind = 'r'
+     AND c.relkind IN ('r','p')
      AND has_table_privilege('anon', c.oid, v.verb)
 $$, 'anon holds no privilege on any table in public');
 
--- 3. The one RLS can never gate. TRUNCATE does not consult policies, so a
--- client role holding it can empty a table outright.
+-- 3. The ones RLS can never gate. TRUNCATE, REFERENCES, TRIGGER and MAINTAIN
+-- do not consult row-level policies, so a client role holding any of them can
+-- act outside anything RLS enforces — TRUNCATE empties the table outright,
+-- and the other three reach DDL-adjacent behaviour no policy gates.
 SELECT is_empty($$
-  SELECT c.relname::text AS tbl, r.rolname
+  SELECT c.relname::text AS tbl, r.rolname, v.verb
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     CROSS JOIN (VALUES ('anon'),('authenticated'),('service_role')) AS r(rolname)
+    CROSS JOIN unnest(ARRAY['TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']) AS v(verb)
    WHERE n.nspname = 'public'
-     AND c.relkind = 'r'
-     AND has_table_privilege(r.rolname, c.oid, 'TRUNCATE')
-$$, 'no client role holds TRUNCATE anywhere in public');
+     AND c.relkind IN ('r','p')
+     AND has_table_privilege(r.rolname, c.oid, v.verb)
+$$, 'no client role holds TRUNCATE, REFERENCES, TRIGGER or MAINTAIN anywhere in public');
 
 -- 4. Future tables start closed. Scoped to grantor `postgres` because that is
 -- the role migrations run as, and the only one this migration can alter.
