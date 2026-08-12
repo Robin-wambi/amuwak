@@ -55,9 +55,26 @@ GRANT INSERT, SELECT ON issues TO authenticated;
 -- everything else — table and column ACLs are separate catalogs, but ALL
 -- covers both — so it must be re-granted explicitly here, not assumed to
 -- survive.
-GRANT INSERT, SELECT, UPDATE ON order_messages TO authenticated;
-REVOKE UPDATE (id, order_id, sender_kind, sender_id, body, created_at)
-  ON order_messages FROM authenticated;
+--
+-- Table-wide GRANT plus a per-column REVOKE was tried and does not work: a
+-- role holding the table-level privilege has it on every column regardless of
+-- any column-level REVOKE (verified against this exact table — CI run
+-- 31610783374 reopened the tamper hole with that combination). Column grants
+-- only ever ADD access beyond a missing table-level privilege; they cannot
+-- SUBTRACT from one already held. So a table can have table-wide UPDATE, or a
+-- true column restriction, never both, and this table needs the restriction.
+--
+-- Consequence for 0057_table_grants_test.sql assertion 1: has_table_privilege
+-- checks pg_class.relacl only, never pg_attribute.attacl (confirmed the same
+-- way — CI run 31610175495 showed "policy, no grant" for
+-- (order_messages, UPDATE) with the column grant already live and working).
+-- A policy naming UPDATE can never read back as "granted" through a
+-- column-only privilege, so this one (table, verb) pair fails assertion 1 by
+-- construction, not by an incomplete matrix. Widening it to a table-level
+-- grant would pass assertion 1 and fail 0046's tamper tests instead — see
+-- task-2-report.md for why this migration keeps the security property.
+GRANT INSERT, SELECT ON order_messages TO authenticated;
+GRANT UPDATE (read_at) ON order_messages TO authenticated;
 GRANT INSERT, SELECT ON order_status_events TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON orders TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON pricing_catalog_items TO authenticated;
