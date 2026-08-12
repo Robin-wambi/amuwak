@@ -42,6 +42,24 @@ import { corsHeadersFor } from '../_shared/cors.ts';
 /// and it has already regressed once — if a future refactor threads a different
 /// token in here, this returns null and the caller fails CLOSED instead of the
 /// rule silently evaporating.
+/// Records a REFUSED attempt on the platform log.
+///
+/// Deliberately not a row in `mfa_reset_audit`. That table records what a reset
+/// DID, and both its subject columns are `NOT NULL REFERENCES staff(id)`, so
+/// the two most interesting refusals cannot be written there at all: an unknown
+/// target violates one FK by definition, and a caller holding a valid JWT but
+/// no staff row violates the other. The two that would fit would land as
+/// `factors_cleared = 0` rows, indistinguishable from a legitimate reset of
+/// someone who had no authenticator enrolled — the log would get less
+/// trustworthy, not more.
+///
+/// So refusals go where this function's audit-insert failures already go. A
+/// durable, queryable record of denied attempts wants a different table shape
+/// (nullable subject, an outcome column) and is tracked as its own change.
+function denied(reason: string, detail: Record<string, unknown>): void {
+  console.warn('reset-staff-mfa: denied', { reason, ...detail });
+}
+
 function aalFromJwt(token: string, expectedSub: string): string | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
@@ -113,20 +131,37 @@ Deno.serve(async (req) => {
 
   // Rule 3, cheapest check first.
   if (targetId === callerId) {
+    denied('self-target', { actorStaffId: callerId });
     return json({ error: 'You cannot reset your own two-factor here' }, 403);
   }
 
   // Rule 1: active manager, raw column.
-  const { data: caller } = await admin
+  //
+  // A lookup ERROR is not the same answer as "no such manager", even though
+  // both refuse. Swallowing it would tell a manager they are not a manager
+  // whenever the database hiccups, and leave nothing behind to contradict them
+  // — the same failure mode Rule 2's `listFactors` error was fixed for.
+  const { data: caller, error: callerError } = await admin
     .from('staff')
     .select('role, active, deleted_at')
     .eq('id', callerId)
     .maybeSingle();
+  if (callerError) {
+    console.error('reset-staff-mfa: caller lookup failed', {
+      actorStaffId: callerId,
+      error: callerError.message,
+    });
+    return json({ error: 'Could not verify your account' }, 500);
+  }
 
   const callerIsManager = caller !== null &&
     caller.role === 'manager' && caller.active === true &&
     caller.deleted_at === null;
   if (!callerIsManager) {
+    denied('caller-not-active-manager', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+    });
     return json({ error: 'Only managers can do that' }, 403);
   }
 
@@ -138,31 +173,60 @@ Deno.serve(async (req) => {
   const { data: callerFactors, error: callerFactorsError } =
     await admin.auth.admin.mfa.listFactors({ userId: callerId });
   if (callerFactorsError) {
+    console.error('reset-staff-mfa: caller factor lookup failed', {
+      actorStaffId: callerId,
+      error: callerFactorsError.message,
+    });
     return json({ error: 'Could not verify your two-factor status' }, 500);
   }
   const callerHasVerified = (callerFactors?.factors ?? []).some(
     (f: { status: string }) => f.status === 'verified',
   );
   if (callerHasVerified && aalFromJwt(token, callerId) !== 'aal2') {
+    // The one refusal that is interesting on its own: a caller who knows a
+    // manager's password but cannot pass that manager's own second factor,
+    // trying to strip 2FA off somebody else.
+    denied('caller-owes-mfa-challenge', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+    });
     return json(
       { error: 'Complete your own two-factor check first' },
       403,
     );
   }
 
-  // Target must exist as a staff member.
-  const { data: target } = await admin
+  // Target must exist as a staff member. Only the existence of the row is used
+  // — nothing here needs their name.
+  const { data: target, error: targetError } = await admin
     .from('staff')
-    .select('id, display_name')
+    .select('id')
     .eq('id', targetId)
     .maybeSingle();
+  if (targetError) {
+    console.error('reset-staff-mfa: target lookup failed', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+      error: targetError.message,
+    });
+    return json({ error: 'Could not look up that staff member' }, 500);
+  }
   if (target === null) {
+    denied('target-not-found', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+    });
     return json({ error: 'Staff member not found' }, 404);
   }
 
   const { data: targetFactors, error: listError } =
     await admin.auth.admin.mfa.listFactors({ userId: targetId });
   if (listError) {
+    console.error('reset-staff-mfa: target factor lookup failed', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+      error: listError.message,
+    });
     return json({ error: 'Could not read their two-factor setup' }, 500);
   }
 

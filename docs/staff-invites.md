@@ -114,9 +114,11 @@ not exist yet — and that failure is only logged server-side, where nobody is
 watching.
 
 No extra secrets: it uses the `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-that Supabase injects automatically.
+that Supabase injects automatically. `ALLOWED_ORIGINS` is optional and shared
+with the other functions — see `supabase/functions/_shared/cors.ts`.
 
-**Reading the audit log.** Every reset is recorded. Managers can query it:
+**Reading the audit log.** Every reset that *happened* is recorded. Managers can
+query it:
 
 ```sql
 select a.created_at, actor.display_name as cleared_by,
@@ -126,3 +128,19 @@ select a.created_at, actor.display_name as cleared_by,
   join staff target on target.id = a.target_staff_id
  order by a.created_at desc;
 ```
+
+**Reading the refusals.** An attempt that was *rejected* is not in that table —
+both its subject columns are `NOT NULL REFERENCES staff(id)`, so an unknown
+target or a caller with no staff row could not be written there at all, and the
+rest would arrive as `factors_cleared = 0` rows indistinguishable from a real
+reset of somebody with no authenticator. Refusals go to the function log
+instead:
+
+```bash
+supabase functions logs reset-staff-mfa | grep 'reset-staff-mfa: denied'
+```
+
+`reason` is one of `self-target`, `caller-not-active-manager`,
+`caller-owes-mfa-challenge`, `target-not-found`. The second and third are the
+ones to care about: repeated `caller-owes-mfa-challenge` means somebody holds a
+manager's password but cannot pass that manager's second factor.
