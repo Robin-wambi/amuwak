@@ -51,6 +51,17 @@ jobs:
       - name: Start the local stack
         run: supabase start
 
+      # TEMPORARY — remove before merge.
+      - name: Generate the grant matrix
+        run: |
+          PSQL='psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -At'
+          echo '--- REVOKE lines ---'
+          $PSQL -c "SELECT format('REVOKE ALL ON %I FROM anon, authenticated, service_role;', c.relname) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' ORDER BY c.relname;"
+          echo '--- authenticated GRANT lines ---'
+          $PSQL -c "SELECT format('GRANT %s ON %I TO authenticated;', string_agg(DISTINCT verb, ', ' ORDER BY verb), tbl) FROM (SELECT tablename::text AS tbl, unnest(CASE WHEN cmd='ALL' THEN ARRAY['SELECT','INSERT','UPDATE','DELETE'] ELSE ARRAY[cmd] END) AS verb FROM pg_policies WHERE schemaname='public') x GROUP BY tbl ORDER BY tbl;"
+          echo '--- service_role GRANT lines ---'
+          $PSQL -c "SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO service_role;', c.relname) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname <> 'mfa_recovery_codes' ORDER BY c.relname;"
+
       # Applies every migration into a clean database and runs pg_prove over
       # supabase/tests. A migration that cannot apply fails here just as loudly
       # as a broken assertion, which is worth as much as the tests themselves.
