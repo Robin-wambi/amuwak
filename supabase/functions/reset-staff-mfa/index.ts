@@ -26,27 +26,12 @@
 //      the audit trail.
 //
 // Env (provided by Supabase automatically): SUPABASE_URL,
-// SUPABASE_SERVICE_ROLE_KEY. Optional: ALLOWED_ORIGIN.
+// SUPABASE_SERVICE_ROLE_KEY. Optional: ALLOWED_ORIGINS (see _shared/cors.ts).
 
 // Pinned to an exact version so a cold start can't silently pull a different
 // 2.x into this security-boundary function. Matches invite-staff.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-
-const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowedOrigin,
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+import { corsHeadersFor } from '../_shared/cors.ts';
 
 /// Reads a claim out of the bearer token without verifying its signature. Safe
 /// only because getUser() verified this exact token string and established
@@ -73,6 +58,19 @@ function aalFromJwt(token: string, expectedSub: string): string | null {
 }
 
 Deno.serve(async (req) => {
+  // Per-request, because the allow header echoes the caller's origin once an
+  // allowlist is configured. See `_shared/cors.ts` for why '*' is the default
+  // and why it is safe on a bearer-token endpoint. `json` closes over it rather
+  // than taking it as an argument, which keeps every call site below unchanged.
+  const corsHeaders = corsHeadersFor(req);
+
+  function json(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
