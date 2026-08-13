@@ -1,0 +1,70 @@
+name: Database tests
+
+# The pgTAP suite has never run anywhere except a contributor's laptop. That is
+# every *_test.sql file under supabase/tests and several hundred assertions
+# covering RLS policies, SECURITY DEFINER function bodies, and the privilege
+# grants underneath them — i.e. most of what stands between a driver and
+# somebody else's data — verified only when a human remembered to run it and
+# had Docker working that day.
+#
+# It is also the one suite a Flutter workflow cannot stand in for: these are
+# assertions about Postgres, and the app tests mock the database away entirely.
+#
+# Path-filtered because it is irrelevant to the PRs that touch only Dart. Note
+# that a path-filtered workflow reports no run at all (not a pass) on PRs that
+# miss the filter, so do not make this a required check without accounting for
+# that — the same caveat as `edge-functions.yml`.
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/db-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/db-tests.yml'
+
+jobs:
+  # Named `db-tests` rather than `test` so it is distinguishable from the
+  # Flutter workflow's `test` check in the PR checks list.
+  db-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned, not `latest`: this repo pins deliberately elsewhere too (see
+      # the `@supabase/supabase-js@2.45.4` import and its comment in
+      # supabase/functions/reset-staff-mfa/index.ts). An unpinned CLI lets a
+      # vendor regression turn this branch red with no change on our side —
+      # and this job is the only thing that runs the pgTAP suite at all.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.114.0
+
+      # The full stack, deliberately, with nothing excluded. Trimming services
+      # to save time is a false economy here: `storage-api` owns the
+      # `storage.buckets`/`storage.objects` tables that 0008 and 0052 write to,
+      # and GoTrue owns the `auth.jwt()` / `auth.uid()` helpers that 0054's
+      # SECURITY DEFINER bodies call. Start without them and migrations fail to
+      # apply, or apply and then fail in ways that look like test bugs. Ask how
+      # I know.
+      - name: Start the local stack
+        run: supabase start
+
+      # Applies every migration into a clean database and runs pg_prove over
+      # supabase/tests. A migration that cannot apply fails here just as loudly
+      # as a broken assertion, which is worth as much as the tests themselves.
+      - name: Run pgTAP
+        run: supabase test db
+
+      # Cheap, and it means a stack that dies mid-run is distinguishable from a
+      # genuine assertion failure when someone reads the log later.
+      - name: Stack status on failure
+        if: failure()
+        run: supabase status || true
