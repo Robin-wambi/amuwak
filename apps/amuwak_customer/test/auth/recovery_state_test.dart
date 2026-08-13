@@ -10,11 +10,17 @@ final _event = StateProvider<AuthChangeEvent?>((ref) => null);
 ProviderContainer _containerAt(
   AuthChangeEvent? initial, {
   RecoveryIntentStore? store,
+  String? userId = 'u1',
 }) {
   final container = ProviderContainer(
     overrides: [
       _event.overrideWith((ref) => initial),
       currentAuthEventProvider.overrideWith((ref) => ref.watch(_event)),
+      // A pending reset is scoped to the user it belongs to, so the notifier
+      // reads this. Overridden rather than left real, because the live
+      // provider reaches through AuthService for a Supabase instance no unit
+      // test initialises.
+      currentUserIdProvider.overrideWithValue(userId),
       if (store != null) recoveryIntentStoreProvider.overrideWithValue(store),
     ],
   );
@@ -88,6 +94,43 @@ void main() {
       final reloaded =
           _containerAt(AuthChangeEvent.initialSession, store: store);
       expect(reloaded.read(recoveringProvider), isFalse);
+    });
+
+    test('does not hand one user the reset another user abandoned', () {
+      // A reset abandoned by u1 can outlive its session without ever raising
+      // `signedOut` here, and nothing else clears the flag. Unscoped, the next
+      // person to sign in on that browser inherits it.
+      final store = InMemoryRecoveryIntentStore();
+      final first = _containerAt(AuthChangeEvent.passwordRecovery,
+          store: store);
+      expect(first.read(recoveringProvider), isTrue);
+
+      final somebodyElse = _containerAt(AuthChangeEvent.initialSession,
+          store: store, userId: 'u2');
+      expect(somebodyElse.read(recoveringProvider), isFalse);
+    });
+
+    test('an unrelated sign-out does not cancel a reset it does not own', () {
+      // `clear()` wipes the one stored entry whoever it belongs to, so it has
+      // to be guarded by whether this session is the one recovering. u2 never
+      // recovered; their ordinary sign-out must leave u1's outstanding reset
+      // alone, or the scoping above only half works — u1 would come back to
+      // the app with their old password still live.
+      final store = InMemoryRecoveryIntentStore();
+      final owner = _containerAt(AuthChangeEvent.passwordRecovery,
+          store: store);
+      expect(owner.read(recoveringProvider), isTrue);
+
+      final somebodyElse = _containerAt(AuthChangeEvent.initialSession,
+          store: store, userId: 'u2');
+      expect(somebodyElse.read(recoveringProvider), isFalse);
+      somebodyElse.read(_event.notifier).state = AuthChangeEvent.signedOut;
+      // Read it back: the event provider is derived and lazy, so this is what
+      // recomputes it and runs the notifier's listener. Asserting on the store
+      // alone passes whether or not the listener ever fired.
+      expect(somebodyElse.read(recoveringProvider), isFalse);
+
+      expect(store.isPendingFor('u1'), isTrue);
     });
   });
 

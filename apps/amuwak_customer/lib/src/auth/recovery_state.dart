@@ -2,15 +2,6 @@ import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'recovery_intent_store.dart';
-
-export 'recovery_intent_store.dart';
-
-/// Where the sticky recovery flag is kept so it outlives a page reload.
-/// Overridden in `main.dart` with the persistent implementation.
-final recoveryIntentStoreProvider =
-    Provider<RecoveryIntentStore>((ref) => InMemoryRecoveryIntentStore());
-
 /// Whether the user is part-way through a password recovery.
 ///
 /// Sticky on purpose. A `passwordRecovery` event latches this on and only
@@ -80,25 +71,39 @@ class RecoveringNotifier extends Notifier<bool> {
     final store = ref.read(recoveryIntentStoreProvider);
     ref.listen<AuthChangeEvent?>(currentAuthEventProvider, (_, next) {
       if (next == AuthChangeEvent.passwordRecovery) {
-        store.markPending();
+        final userId = ref.read(currentUserIdProvider);
+        if (userId != null) store.markPending(userId);
         state = true;
-      } else if (next == AuthChangeEvent.signedOut) {
+      } else if (next == AuthChangeEvent.signedOut && state) {
+        // Only when this session is the one recovering. `clear()` wipes the
+        // single stored entry whoever owns it, so an unrelated user signing
+        // out of a shared browser would otherwise cancel someone else's
+        // outstanding reset and hand them the app with their old password.
+        //
+        // Guarded on `state` rather than by passing a user id, because by the
+        // time `signedOut` arrives the session is gone and
+        // `currentUserIdProvider` is already null — there would be nothing
+        // left to compare against. The staff [AuthGate] guards on its own
+        // `_recovering` for the same reason.
         store.clear();
         state = false;
       }
     });
+    final userId = ref.read(currentUserIdProvider);
     // Seed from the current event: supabase_flutter can exchange the ?code=
     // from a recovery link before the first frame builds, so the event may
     // already have fired by the time anything reads this.
     if (ref.read(currentAuthEventProvider) ==
         AuthChangeEvent.passwordRecovery) {
-      store.markPending();
+      if (userId != null) store.markPending(userId);
       return true;
     }
-    // Otherwise fall back to what a previous run recorded. A reload restores
-    // the Supabase session and raises `initialSession`, never a second
-    // `passwordRecovery`, so the event alone would forget an unfinished reset
-    // and let the user into the app with their old password still live.
-    return store.isPending;
+    // Otherwise fall back to what a previous run recorded, for this user only.
+    // A reload restores the Supabase session and raises `initialSession`,
+    // never a second `passwordRecovery`, so the event alone would forget an
+    // unfinished reset and let the user into the app with their old password
+    // still live. Scoped by user id because a reset abandoned on a shared
+    // browser otherwise greets whoever signs in next.
+    return userId != null && store.isPendingFor(userId);
   }
 }

@@ -18,6 +18,12 @@ import 'set_password_screen.dart';
 /// invite or reset link is opened) keeps us on [SetPasswordScreen] until the
 /// user sets a password — a later token refresh must not bump them off it early.
 ///
+/// Sticky across a relaunch too, via [RecoveryIntentStore]. Widget state alone
+/// was not enough: the Supabase session persists but `passwordRecovery` does
+/// not repeat — reopening the PWA restores the stored session and raises
+/// `initialSession` — so a rider who reloaded mid-reset was handed the
+/// dashboard with their old password still live.
+///
 /// The MFA challenge is checked BEFORE recovery, and that ordering is the
 /// security-relevant part. If a recovery could set a new password without the
 /// second factor first, then anyone holding the mailbox could reset their way
@@ -33,20 +39,35 @@ class AuthGate extends ConsumerStatefulWidget {
 class _AuthGateState extends ConsumerState<AuthGate> {
   bool _recovering = false;
 
+  RecoveryIntentStore get _intent => ref.read(recoveryIntentStoreProvider);
+
   @override
   void initState() {
     super.initState();
-    // Seed from the current event so a link opened on cold start is honoured.
-    _recovering =
-        ref.read(currentAuthEventProvider) == AuthChangeEvent.passwordRecovery;
+    // Seed from the current event so a link opened on cold start is honoured,
+    // then fall back to what a previous run recorded — a relaunch replays
+    // `initialSession`, never a second `passwordRecovery`.
+    final userId = ref.read(currentUserIdProvider);
+    if (ref.read(currentAuthEventProvider) ==
+        AuthChangeEvent.passwordRecovery) {
+      if (userId != null) _intent.markPending(userId);
+      _recovering = true;
+    } else {
+      // Only this user's own reset. A different rider's abandoned invite is
+      // not a reason to demand a password from whoever signs in next.
+      _recovering = userId != null && _intent.isPendingFor(userId);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthChangeEvent?>(currentAuthEventProvider, (prev, next) {
       if (next == AuthChangeEvent.passwordRecovery && !_recovering) {
+        final userId = ref.read(currentUserIdProvider);
+        if (userId != null) _intent.markPending(userId);
         setState(() => _recovering = true);
       } else if (next == AuthChangeEvent.signedOut && _recovering) {
+        _intent.clear();
         setState(() => _recovering = false);
       }
     });
@@ -58,7 +79,10 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     if (ref.watch(needsMfaChallengeProvider)) return const MfaChallengeScreen();
     if (_recovering) {
       return SetPasswordScreen(
-        onCompleted: () => setState(() => _recovering = false),
+        onCompleted: () {
+          _intent.clear();
+          setState(() => _recovering = false);
+        },
       );
     }
     return const StaffDashboardScreen();

@@ -321,6 +321,77 @@ void main() {
     expect(find.byType(SetPasswordScreen), findsNothing);
   });
 
+  testWidgets('a reload mid-reset still lands on SetPassword', (tester) async {
+    // Reopening the PWA restores the persisted Supabase session and raises
+    // initialSession — passwordRecovery does not fire a second time. Seeding
+    // only from the event would drop a rider who reloaded mid-reset straight
+    // onto the dashboard with their old password still live.
+    final store = InMemoryRecoveryIntentStore()..markPending('u1');
+
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u1'),
+      currentAuthEventProvider
+          .overrideWithValue(AuthChangeEvent.initialSession),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      recoveryIntentStoreProvider.overrideWithValue(store),
+      ..._dashboardStubs(),
+    ]);
+
+    expect(find.byType(SetPasswordScreen), findsOneWidget);
+    expect(find.byType(StaffDashboardScreen), findsNothing);
+  });
+
+  testWidgets('does not hand one rider the reset another rider abandoned',
+      (tester) async {
+    // Riders share devices. An invite opened and abandoned by u1 leaves a
+    // pending intent behind; the session it belonged to can die without ever
+    // reaching this gate as `signedOut`, so nothing clears it. Unscoped, the
+    // next rider to sign in inherits it and is pushed onto SetPassword — which
+    // here also rewrites their display name, not just their password.
+    final store = InMemoryRecoveryIntentStore()..markPending('u1');
+
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u2'),
+      currentAuthEventProvider.overrideWithValue(AuthChangeEvent.signedIn),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      recoveryIntentStoreProvider.overrideWithValue(store),
+      ..._dashboardStubs(),
+    ]);
+
+    expect(find.byType(StaffDashboardScreen), findsOneWidget);
+    expect(find.byType(SetPasswordScreen), findsNothing);
+  });
+
+  testWidgets('a finished reset is not demanded again after a reload',
+      (tester) async {
+    // Signing out ends a reset, so it has to clear the persisted intent —
+    // otherwise every later launch would ask for a new password.
+    final store = InMemoryRecoveryIntentStore();
+    final container = ProviderContainer(overrides: [
+      currentUserIdProvider.overrideWith((ref) => ref.watch(_testUserIdProvider)),
+      currentAuthEventProvider.overrideWith((ref) => ref.watch(_testEventProvider)),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      recoveryIntentStoreProvider.overrideWithValue(store),
+      ..._dashboardStubs(),
+    ]);
+    addTearDown(container.dispose);
+    container.read(_testEventProvider.notifier).state =
+        AuthChangeEvent.passwordRecovery;
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: AuthGate()),
+    ));
+    expect(store.isPendingFor('u1'), isTrue);
+
+    container.read(_testEventProvider.notifier).state =
+        AuthChangeEvent.signedOut;
+    container.read(_testUserIdProvider.notifier).state = null;
+    await tester.pump();
+
+    expect(store.isPendingFor('u1'), isFalse);
+  });
+
   testWidgets('routes back to LoginScreen when the session ends (sign-out)',
       (tester) async {
     final container = ProviderContainer(overrides: [
