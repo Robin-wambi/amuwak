@@ -285,9 +285,21 @@ max_frequency = "5s"
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
-# [auth.hook.custom_access_token]
-# enabled = true
-# uri = "pg-functions://<database>/<schema>/<hook_name>"
+#
+# Both apps route on the `user_role` claim this hook mints (defined in migration
+# 0009, fixed in 0025, extended to customers in 0043). It is not optional: with
+# the hook unregistered the claim is simply absent from every token, so
+# `roleFromAccessToken` returns null for everyone. The staff dashboard then
+# hides its manager-only affordances, and the customer router -- which treats a
+# null role as a customer so a token refresh cannot eject anyone -- admits staff
+# and half-linked accounts alike into an app that renders empty for them.
+#
+# Registering it here keeps `supabase start` and CI matched to the deployed
+# projects, where it is set in the dashboard. Without this line a freshly
+# provisioned environment silently comes up role-blind.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]

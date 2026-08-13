@@ -112,6 +112,19 @@ String? roleFromAccessToken(String? token) {
 }
 
 final currentRoleProvider = Provider<String?>((ref) {
-  final token = ref.watch(authStateProvider).valueOrNull?.session?.accessToken;
-  return roleFromAccessToken(token);
+  final fromStream = ref.watch(authStateProvider).valueOrNull?.session?.accessToken;
+  if (fromStream != null) return roleFromAccessToken(fromStream);
+  // Same cold-start window as [currentUserIdProvider], and it must be handled
+  // the same way: without this the two disagree for the first frames of every
+  // launch — the user reads as signed in (restored session) while the role
+  // still reads null. Consumers that key off the role then act on a
+  // signed-in-but-roleless state: the customer router treats it as a customer,
+  // briefly admitting a staff or unlinked account to an app that renders empty
+  // for them, and the staff dashboard hides manager-only affordances until the
+  // stream catches up. Reading the restored token directly closes the gap.
+  //
+  // The streamed token wins whenever it exists, so a rotated JWT is never
+  // shadowed by the one captured at restore time.
+  return roleFromAccessToken(
+      ref.watch(authServiceProvider).currentSession?.accessToken);
 });

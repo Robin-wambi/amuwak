@@ -38,6 +38,10 @@ void main() {
         overrides: [
           authStateProvider.overrideWith((ref) => Stream<AuthState>.empty()),
           currentUserIdProvider.overrideWithValue('user-1'),
+          // Stubbed for the same reason as the id: the redirect reads the role
+          // too, and it falls back to the restored session — a real AuthService
+          // — when the auth stream has not emitted.
+          currentRoleProvider.overrideWithValue('customer'),
           pricingSettingsProvider.overrideWith(
             (ref) => PricingSettings(
               id: 's',
