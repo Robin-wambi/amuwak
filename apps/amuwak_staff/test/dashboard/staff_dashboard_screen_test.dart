@@ -1404,6 +1404,66 @@ void main() {
   // ---------------------------------------------- Pricing entry role-gating
 
   testWidgets(
+    'Account tab offers two-factor setup to every role, drivers included',
+    (tester) async {
+      // A driver account can create and complete orders, so it is worth
+      // protecting too — this entry is not gated the way pricing and invites
+      // are.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        currentRoleProvider.overrideWith((ref) => 'driver'),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Two-factor authentication'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Account tab labels two-factor On once a factor is enrolled',
+    (tester) async {
+      // Without this the entry looks identical whether or not the account is
+      // protected, and the only way to find out was to tap it — which, for an
+      // enrolled user, used to dead-end at a duplicate-enrolment error.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        mfaEnabledProvider.overrideWith((ref) async => true),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('On'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Account tab labels two-factor Off when nothing is enrolled',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        mfaEnabledProvider.overrideWith((ref) async => false),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Off'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'Account tab hides Pricing settings for the driver role (write-gated)',
     (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
@@ -1420,6 +1480,44 @@ void main() {
       expect(find.text('Pricing settings'), findsNothing);
       // The Account tab still rendered (sign-out is always present).
       expect(find.text('Sign out'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Account tab offers the Staff list to managers only',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        currentRoleProvider.overrideWith((ref) => 'manager'),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Staff'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Account tab hides the Staff list from drivers',
+    (tester) async {
+      // Gated on the JWT claim, not auth_staff_role() — 0039 widened that one
+      // to call drivers managers.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await pumpDashboardWithDb(tester, extraOverrides: [
+        currentRoleProvider.overrideWith((ref) => 'driver'),
+      ]);
+
+      await tester.tap(find.text('Account').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Staff'), findsNothing);
     },
   );
 

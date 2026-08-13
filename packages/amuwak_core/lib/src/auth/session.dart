@@ -1,9 +1,54 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_service.dart';
+import 'mfa_service.dart';
+import 'recovery_codes_service.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+final mfaServiceProvider = Provider<MfaService>((ref) => MfaService());
+
+final recoveryCodesServiceProvider =
+    Provider<RecoveryCodesService>((ref) => RecoveryCodesService());
+
+/// Whether this session still owes a second factor.
+///
+/// Recomputed on every auth event, because clearing the challenge upgrades the
+/// session to aal2 and raises `mfaChallengeVerified` — the gate has to notice
+/// that and let the user through.
+///
+/// Fails open. `needsChallenge` parses the access token and casts its `amr`
+/// claim, so a malformed or claim-stripped token throws — and AuthGate reads
+/// this straight from `build()`, where an escaping error replaces the whole app
+/// with a red screen offering no dashboard, no login, not even a sign-out. MFA
+/// is opt-in, so a session that cannot be reasoned about is let through rather
+/// than locked out.
+final needsMfaChallengeProvider = Provider<bool>((ref) {
+  ref.watch(authStateProvider);
+  try {
+    return ref.watch(mfaServiceProvider).needsChallenge;
+  } catch (e, st) {
+    developer.log('Could not read the assurance level; assuming no challenge.',
+        name: 'needsMfaChallenge', error: e, stackTrace: st);
+    return false;
+  }
+});
+
+/// Whether this account has a verified second factor.
+///
+/// Drives the Account entry's On/Off label so an enrolled staff member is told
+/// what they already have instead of being sent into a second enrolment that
+/// can only fail. Callers `invalidate` it after enrolling or removing a factor.
+///
+/// Errors surface as [AsyncError] rather than throwing — callers show no label
+/// rather than breaking the Account tab over a status line.
+final mfaEnabledProvider = FutureProvider<bool>((ref) async {
+  ref.watch(authStateProvider);
+  final factors = await ref.watch(mfaServiceProvider).verifiedFactors();
+  return factors.isNotEmpty;
+});
 
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return ref.watch(authServiceProvider).authStateChanges;

@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../auth/sign_out.dart';
+import '../auth/mfa_enrolment_screen.dart';
+import '../auth/sign_out_provider.dart';
 import 'current_staff_provider.dart';
 import 'dashboard_header_content.dart';
 import '../notifications/notification_summary.dart';
@@ -34,10 +35,9 @@ import '../pricing/pricing_settings.dart';
 import '../pricing/pricing_settings_screen.dart';
 import '../pricing/pricing_catalog_screen.dart';
 import '../staff/invite_staff_screen.dart';
+import '../staff/staff_list_screen.dart';
 import '../printing/printing_providers.dart';
 import '../sync/repository_providers.dart';
-import '../sync/sync_orchestrator_provider.dart';
-import '../sync/sync_status.dart';
 // Phase 5 (offline UX): re-add these to surface pending/dead-letter state.
 // import '../shared/widgets/sync_status_banner.dart';
 // import '../sync/sync_errors_provider.dart';
@@ -182,16 +182,12 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     // No navigation here — AuthGate routes to LoginScreen once the session clears.
   }
 
-  /// Production wiring: resolves the auth service, sync orchestrator, and local
-  /// database from Riverpod and hands them to [signOutAndReset], which stops the
-  /// sync engine and truncates the local cache before revoking the session.
-  Future<void> _defaultSignOut(WidgetRef ref) {
-    return signOutAndReset(
-      auth: ref.read(authServiceProvider),
-      orchestrator: ref.read(syncOrchestratorProvider),
-      db: ref.read(appDatabaseProvider),
-    );
-  }
+  /// Production wiring: [signOutAndResetFromRef] resolves the auth service,
+  /// sync orchestrator, and local database from Riverpod and hands them to
+  /// `signOutAndReset`, which stops the sync engine and truncates the local
+  /// cache before revoking the session. Shared with the MFA challenge screen
+  /// so both sign-out controls tear the same things down.
+  Future<void> _defaultSignOut(WidgetRef ref) => signOutAndResetFromRef(ref);
 
   Future<void> _handleNewPickup() async {
     final staffId = ref.read(currentUserIdProvider);
@@ -494,6 +490,43 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     );
   }
 
+  void _openStaffList() {
+    final resetService = ref.read(resetStaffMfaServiceProvider);
+    final staffRepo = ref.read(staffRepositoryProvider);
+    final myId = ref.read(currentUserIdProvider) ?? '';
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => StaffListScreen(
+          staff: staffRepo.watchAll,
+          onReset: resetService.reset,
+          currentStaffId: myId,
+        ),
+      ),
+    );
+  }
+
+  void _openTwoFactor() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (routeContext) => MfaEnrolmentScreen(
+          onCompleted: ({required enabled}) {
+            Navigator.of(routeContext).pop();
+            // The Account entry reads its On/Off label from this provider, so
+            // it has to be re-asked or the card contradicts what just happened.
+            ref.invalidate(mfaEnabledProvider);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(enabled
+                    ? 'Two-factor authentication is on.'
+                    : 'Two-factor authentication is off.'),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   void _openPricingCatalog() {
     final catalogRepo = ref.read(pricingCatalogRepositoryProvider);
     Navigator.of(context).push<void>(
@@ -680,6 +713,9 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
               onSignOut: _onSignOutPressed,
               onOpenPricingSettings: _openPricingSettings,
               onInviteStaff: _openInviteStaff,
+              onOpenStaff: _openStaffList,
+              onOpenTwoFactor: _openTwoFactor,
+              twoFactorEnabled: ref.watch(mfaEnabledProvider).valueOrNull,
               roleText:
                   roleLabel(ref.watch(currentRoleProvider)) ?? 'Operations staff',
               // Pricing writes are gated to in_shop + manager (migration 0024),
@@ -899,6 +935,9 @@ class _AccountTab extends StatelessWidget {
     required this.onSignOut,
     required this.onOpenPricingSettings,
     required this.onInviteStaff,
+    required this.onOpenStaff,
+    required this.onOpenTwoFactor,
+    required this.twoFactorEnabled,
     required this.roleText,
     required this.canManagePricing,
     required this.canInviteStaff,
@@ -907,6 +946,18 @@ class _AccountTab extends StatelessWidget {
   final VoidCallback onSignOut;
   final VoidCallback onOpenPricingSettings;
   final VoidCallback onInviteStaff;
+
+  /// Opens the managers-only staff list, whose action is clearing a lost
+  /// authenticator.
+  final VoidCallback onOpenStaff;
+
+  /// Opens authenticator enrolment. Shown to every role — a driver's account
+  /// can create and complete orders, so it is worth protecting too.
+  final VoidCallback onOpenTwoFactor;
+
+  /// Whether a verified factor exists, or null while that is unknown (still
+  /// loading, or the lookup failed).
+  final bool? twoFactorEnabled;
 
   /// Human label for the signed-in staff member's role, mirroring the header
   /// chip (falls back to a generic label when there's no role claim).
@@ -993,7 +1044,42 @@ class _AccountTab extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg2),
         ],
+        // Optional for now: staff enrol at their own pace. Enforcement (aal2
+        // in RLS) is a separate, deliberate step once everyone has a factor —
+        // turning it on first would lock the fleet out of production.
+        AppCard(
+          onTap: onOpenTwoFactor,
+          child: Row(
+            children: [
+              Icon(Icons.shield_outlined, color: colorScheme.primary),
+              const SizedBox(width: AppSpacing.md),
+              const Expanded(child: Text('Two-factor authentication')),
+              // Null while the status is still loading, or if it could not be
+              // read at all — a status line is not worth a broken Account tab,
+              // and the screen behind this card reports the truth either way.
+              if (twoFactorEnabled != null)
+                Text(
+                  twoFactorEnabled! ? 'On' : 'Off',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg2),
         if (canInviteStaff) ...[
+          AppCard(
+            onTap: onOpenStaff,
+            child: Row(
+              children: [
+                Icon(Icons.groups_outlined, color: colorScheme.primary),
+                const SizedBox(width: AppSpacing.md),
+                const Expanded(child: Text('Staff')),
+                const Icon(Icons.chevron_right_rounded),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg2),
           AppCard(
             onTap: onInviteStaff,
             child: Row(

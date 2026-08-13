@@ -1,0 +1,284 @@
+// reset-staff-mfa
+// -----------------------------------------------------------------------------
+// Manager-only endpoint that clears a staff member's TOTP factors after they
+// lose their authenticator. Runs server-side with the service-role key so the
+// privileged admin MFA API is never exposed to the client.
+//
+// Why this exists: Supabase TOTP has no recovery codes, and nothing we write
+// can mint an aal2 session (GoTrue owns the `aal` claim). So recovery cannot be
+// "another way to pass the check" — it can only REMOVE the factor and drop the
+// account to aal1. deleteFactor signs the target out of all sessions, so they
+// land at login, sign in with their password, and enrol again.
+//
+// Three rules, and the second is what makes this safe rather than a hole:
+//   1. Caller is an ACTIVE MANAGER, read from the raw staff.role column. This
+//      client holds the service-role key, which bypasses RLS entirely, so there
+//      is no policy doing this for us — the check has to be explicit here.
+//      Requires deleted_at IS NULL too, which auth_staff_role() does not.
+//   2. Caller does not OWE an MFA challenge. A locked-out manager still holds a
+//      valid aal1 session; the app hides the UI but the JWT works. Without this,
+//      a stolen password alone could strip 2FA off any account and MFA would be
+//      decorative. Phrased as "if you have a verified factor, your aal must be
+//      aal2" rather than a flat aal2 requirement, so the endpoint is usable
+//      while enrolment is still optional and nobody has a factor yet.
+//   3. Caller is not the target. A manager at aal2 can already unenrol
+//      themselves via MfaService.removeFactor; self-reset here would only muddy
+//      the audit trail.
+//
+// Env (provided by Supabase automatically): SUPABASE_URL,
+// SUPABASE_SERVICE_ROLE_KEY. Optional: ALLOWED_ORIGINS (see _shared/cors.ts).
+
+// Pinned to an exact version so a cold start can't silently pull a different
+// 2.x into this security-boundary function. Matches invite-staff.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { corsHeadersFor } from '../_shared/cors.ts';
+
+/// Records a REFUSED attempt on the platform log.
+///
+/// Deliberately not a row in `mfa_reset_audit`. That table records what a reset
+/// DID, and both its subject columns are `NOT NULL REFERENCES staff(id)`, so
+/// the two most interesting refusals cannot be written there at all: an unknown
+/// target violates one FK by definition, and a caller holding a valid JWT but
+/// no staff row violates the other. The two that would fit would land as
+/// `factors_cleared = 0` rows, indistinguishable from a legitimate reset of
+/// someone who had no authenticator enrolled — the log would get less
+/// trustworthy, not more.
+///
+/// So refusals go where this function's audit-insert failures already go. A
+/// durable, queryable record of denied attempts wants a different table shape
+/// (nullable subject, an outcome column) and is tracked as its own change.
+function denied(reason: string, detail: Record<string, unknown>): void {
+  console.warn('reset-staff-mfa: denied', { reason, ...detail });
+}
+
+/// Reads a claim out of the bearer token without verifying its signature. Safe
+/// only because getUser() verified this exact token string and established
+/// [expectedSub] from it; this reads `aal`, which getUser does not surface.
+///
+/// [expectedSub] makes that invariant explicit rather than positional. Rule 2
+/// is the rule that stops a stolen password from stripping 2FA off an account,
+/// and it has already regressed once — if a future refactor threads a different
+/// token in here, this returns null and the caller fails CLOSED instead of the
+/// rule silently evaporating.
+function aalFromJwt(token: string, expectedSub: string): string | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const padded = parts[1] + '='.repeat((4 - (parts[1].length % 4)) % 4);
+    const payload = JSON.parse(
+      atob(padded.replace(/-/g, '+').replace(/_/g, '/')),
+    );
+    if (payload.sub !== expectedSub) return null;
+    return typeof payload.aal === 'string' ? payload.aal : null;
+  } catch {
+    return null;
+  }
+}
+
+Deno.serve(async (req) => {
+  // Per-request, because the allow header echoes the caller's origin once an
+  // allowlist is configured. See `_shared/cors.ts` for why '*' is the default
+  // and why it is safe on a bearer-token endpoint. `json` closes over it rather
+  // than taking it as an argument, which keeps every call site below unchanged.
+  const corsHeaders = corsHeadersFor(req);
+
+  function json(body: unknown, status: number): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+  if (req.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405);
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token) return json({ error: 'Not signed in' }, 401);
+
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Identify the caller. getUser verifies the token signature.
+  const { data: userData, error: userError } = await admin.auth.getUser(token);
+  if (userError || !userData?.user) {
+    return json({ error: 'Not signed in' }, 401);
+  }
+  const callerId = userData.user.id;
+
+  let body: { target_staff_id?: unknown };
+  try {
+    // `?? {}` is load-bearing: a body of literal `null` RESOLVES rather than
+    // throwing, so the catch never fires and the property read below would
+    // raise a TypeError that escapes the handler — returning a bare 500 with no
+    // CORS headers, which this PWA surfaces as an opaque network failure.
+    body = (await req.json()) ?? {};
+  } catch {
+    return json({ error: 'Invalid request' }, 400);
+  }
+  const targetId = body.target_staff_id;
+  if (typeof targetId !== 'string' || targetId.length === 0) {
+    return json({ error: 'Invalid request' }, 400);
+  }
+
+  // Rule 3, cheapest check first.
+  if (targetId === callerId) {
+    denied('self-target', { actorStaffId: callerId });
+    return json({ error: 'You cannot reset your own two-factor here' }, 403);
+  }
+
+  // Rule 1: active manager, raw column.
+  //
+  // A lookup ERROR is not the same answer as "no such manager", even though
+  // both refuse. Swallowing it would tell a manager they are not a manager
+  // whenever the database hiccups, and leave nothing behind to contradict them
+  // — the same failure mode Rule 2's `listFactors` error was fixed for.
+  const { data: caller, error: callerError } = await admin
+    .from('staff')
+    .select('role, active, deleted_at')
+    .eq('id', callerId)
+    .maybeSingle();
+  if (callerError) {
+    console.error('reset-staff-mfa: caller lookup failed', {
+      actorStaffId: callerId,
+      error: callerError.message,
+    });
+    return json({ error: 'Could not verify your account' }, 500);
+  }
+
+  const callerIsManager = caller !== null &&
+    caller.role === 'manager' && caller.active === true &&
+    caller.deleted_at === null;
+  if (!callerIsManager) {
+    denied('caller-not-active-manager', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+    });
+    return json({ error: 'Only managers can do that' }, 403);
+  }
+
+  // Rule 2: the caller must not owe a challenge of their own. An unknown
+  // caller factor state must fail closed — if this lookup errors we cannot
+  // tell whether the caller has a verified factor, and falling through would
+  // silently disable the rule, letting a stolen aal1 password strip 2FA off
+  // any account.
+  const { data: callerFactors, error: callerFactorsError } =
+    await admin.auth.admin.mfa.listFactors({ userId: callerId });
+  if (callerFactorsError) {
+    console.error('reset-staff-mfa: caller factor lookup failed', {
+      actorStaffId: callerId,
+      error: callerFactorsError.message,
+    });
+    return json({ error: 'Could not verify your two-factor status' }, 500);
+  }
+  const callerHasVerified = (callerFactors?.factors ?? []).some(
+    (f: { status: string }) => f.status === 'verified',
+  );
+  if (callerHasVerified && aalFromJwt(token, callerId) !== 'aal2') {
+    // The one refusal that is interesting on its own: a caller who knows a
+    // manager's password but cannot pass that manager's own second factor,
+    // trying to strip 2FA off somebody else.
+    denied('caller-owes-mfa-challenge', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+    });
+    return json(
+      { error: 'Complete your own two-factor check first' },
+      403,
+    );
+  }
+
+  // Target must exist as a staff member. Only the existence of the row is used
+  // — nothing here needs their name.
+  const { data: target, error: targetError } = await admin
+    .from('staff')
+    .select('id')
+    .eq('id', targetId)
+    .maybeSingle();
+  if (targetError) {
+    console.error('reset-staff-mfa: target lookup failed', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+      error: targetError.message,
+    });
+    return json({ error: 'Could not look up that staff member' }, 500);
+  }
+  if (target === null) {
+    denied('target-not-found', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+    });
+    return json({ error: 'Staff member not found' }, 404);
+  }
+
+  const { data: targetFactors, error: listError } =
+    await admin.auth.admin.mfa.listFactors({ userId: targetId });
+  if (listError) {
+    console.error('reset-staff-mfa: target factor lookup failed', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+      error: listError.message,
+    });
+    return json({ error: 'Could not read their two-factor setup' }, 500);
+  }
+
+  const verified = (targetFactors?.factors ?? []).filter(
+    (f: { status: string }) => f.status === 'verified',
+  );
+
+  // Track how many deletes actually succeeded so a partial failure still
+  // gets an audit row — a target left with one factor destroyed and one
+  // remaining must never be invisible to the audit log.
+  let clearedCount = 0;
+  for (const factor of verified) {
+    const { error: deleteError } = await admin.auth.admin.mfa.deleteFactor({
+      id: factor.id,
+      userId: targetId,
+    });
+    if (deleteError) {
+      const { error: auditError } = await admin.from('mfa_reset_audit').insert({
+        actor_staff_id: callerId,
+        target_staff_id: targetId,
+        factors_cleared: clearedCount,
+      });
+      if (auditError) {
+        console.error('reset-staff-mfa: audit insert failed after partial delete', {
+          actorStaffId: callerId,
+          targetStaffId: targetId,
+          factorsCleared: clearedCount,
+          error: auditError.message,
+        });
+      }
+      return json({ error: 'Could not clear their two-factor' }, 500);
+    }
+    clearedCount += 1;
+  }
+
+  // Audit AFTER the deletes, so the log records what actually happened rather
+  // than what was attempted. A failed insert is non-fatal to the response —
+  // the factors really were cleared and the manager should not be told
+  // otherwise — but it must not be silent, so log it for the operator.
+  const { error: auditError } = await admin.from('mfa_reset_audit').insert({
+    actor_staff_id: callerId,
+    target_staff_id: targetId,
+    factors_cleared: clearedCount,
+  });
+  if (auditError) {
+    console.error('reset-staff-mfa: audit insert failed', {
+      actorStaffId: callerId,
+      targetStaffId: targetId,
+      factorsCleared: clearedCount,
+      error: auditError.message,
+    });
+  }
+
+  return json({ factors_cleared: clearedCount }, 200);
+});
