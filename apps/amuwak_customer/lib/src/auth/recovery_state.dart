@@ -74,7 +74,17 @@ class RecoveringNotifier extends Notifier<bool> {
         final userId = ref.read(currentUserIdProvider);
         if (userId != null) store.markPending(userId);
         state = true;
-      } else if (next == AuthChangeEvent.signedOut) {
+      } else if (next == AuthChangeEvent.signedOut && state) {
+        // Only when this session is the one recovering. `clear()` wipes the
+        // single stored entry whoever owns it, so an unrelated user signing
+        // out of a shared browser would otherwise cancel someone else's
+        // outstanding reset and hand them the app with their old password.
+        //
+        // Guarded on `state` rather than by passing a user id, because by the
+        // time `signedOut` arrives the session is gone and
+        // `currentUserIdProvider` is already null — there would be nothing
+        // left to compare against. The staff [AuthGate] guards on its own
+        // `_recovering` for the same reason.
         store.clear();
         state = false;
       }
