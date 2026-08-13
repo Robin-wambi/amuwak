@@ -103,6 +103,23 @@ class AuthService {
     }
   }
 
+  /// Redeem a recovery link that carries a `token_hash` rather than a PKCE
+  /// `?code=`, establishing the session and raising `passwordRecovery`.
+  ///
+  /// This is the device-independent half of password recovery. The PKCE
+  /// exchange needs a code verifier that [sendPasswordReset] wrote to the
+  /// localStorage of the browser that asked for the reset, so that link only
+  /// completes there — open it on a phone after requesting it on a laptop and
+  /// there is nothing to exchange against. A token hash carries its own proof
+  /// and works from anywhere.
+  Future<void> verifyRecoveryToken(String tokenHash) async {
+    try {
+      await _goTrue.verifyOTP(type: OtpType.recovery, tokenHash: tokenHash);
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    }
+  }
+
   static String _normalizeEmail(String email) => email.trim().toLowerCase();
 
   /// End the session. GoTrue drops the local session and raises `signedOut`

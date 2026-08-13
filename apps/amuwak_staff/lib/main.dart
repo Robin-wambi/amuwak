@@ -4,12 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/auth/auth_gate.dart';
+import 'src/auth/recovery_link_state.dart';
 import 'src/bootstrap/app_bootstrap.dart';
 import 'src/printing/printing_providers.dart';
 import 'src/sync/sync_orchestrator_provider.dart';
 
 Future<void> main() async {
-  await AppBootstrap.initialize();
+  final recoveryLink = await AppBootstrap.initialize();
   // Resolved once here so screens can read PrinterStore synchronously.
   final prefs = await SharedPreferences.getInstance();
   runApp(
@@ -20,6 +21,10 @@ Future<void> main() async {
         // a forced password reset by reopening the app.
         recoveryIntentStoreProvider
             .overrideWithValue(PersistentRecoveryIntentStore(prefs)),
+        // A rejected recovery token never reaches the auth stream, so
+        // bootstrap's verdict is the only record that the emailed link was the
+        // problem — without it the rider lands on a plain sign-in screen.
+        recoveryLinkOutcomeProvider.overrideWithValue(recoveryLink),
       ],
       child: const AmuwakStaffApp(),
     ),

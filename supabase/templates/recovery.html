@@ -1,0 +1,49 @@
+<!--
+  Password recovery email.
+
+  The link deliberately does NOT use {{ .ConfirmationURL }}. That resolves to
+  GoTrue's /verify endpoint, which redirects back carrying a PKCE `?code=` —
+  and that code can only be exchanged against a verifier stored in the
+  localStorage of the browser that requested the reset. Request on a laptop,
+  open the mail on a phone (or in an email client's own in-app browser) and
+  the link cannot complete. That is the single most common way people read
+  their email.
+
+  {{ .TokenHash }} carries its own proof, so the app can redeem it with
+  verifyOtp from anywhere. See completeRecoveryLink in amuwak_core.
+
+  {{ .RedirectTo }} must not be hardcoded: both apps share this one template,
+  and it has to land the user back in the app they asked from.
+
+  The two apps get there differently, which is worth knowing before changing
+  either. The customer PWA passes its own origin to resetPasswordForEmail
+  (passwordResetRedirectProvider) because it is served from a domain root, so
+  an origin is the whole URL. The staff app passes nothing and falls back to
+  the project's Site URL, which names the staff PWA — deliberately, because it
+  is served from a Pages sub-path (/amuwak/) that a bare origin would drop.
+
+  So a rider's link is only correct while the Site URL names the staff app. If
+  that ever moves to the customer PWA, staff resets have to start passing an
+  explicit origin-plus-base-path of their own.
+
+  Appending to {{ .RedirectTo }} assumes it carries no query string of its own.
+  Both paths above satisfy that; a reset triggered by hand from the dashboard
+  with some other redirect_to would not.
+-->
+<h2>Set a new password</h2>
+
+<p>
+  We received a request to set a new password for your Amuwak account.
+  Use the link below — it expires, and it works only once.
+</p>
+
+<p>
+  <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">
+    Set a new password
+  </a>
+</p>
+
+<p>
+  If you did not ask for this, you can ignore this email. Your password stays
+  as it is.
+</p>

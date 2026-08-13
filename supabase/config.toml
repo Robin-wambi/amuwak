@@ -238,6 +238,15 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# The recovery link must be device-independent, so this template emits a
+# token hash rather than {{ .ConfirmationURL }}'s PKCE ?code= — see the comment
+# in the template itself. This block only drives `supabase start`; the hosted
+# project's copy of the same template is set in Dashboard → Authentication →
+# Emails, and the two must be kept in step.
+[auth.email.template.recovery]
+subject = "Set a new Amuwak password"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

@@ -1,26 +1,34 @@
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/router.dart';
+import 'recovery_state.dart';
 
 /// Shown when a recovery link produced no session.
 ///
-/// Supabase's PKCE flow keeps the code verifier in the localStorage of the
-/// browser that requested the reset, so the emailed link only works there.
-/// Opened on another device — or in an email client's isolated in-app browser
-/// — the exchange fails and the user would otherwise land on /login with no
-/// hint that the link was the problem, and would keep asking for more.
+/// Two link shapes fail for two unrelated reasons, and the difference is the
+/// whole value of this screen — a user told to try another browser when the
+/// real problem is a spent token will hunt for a device fault that is not
+/// there, and vice versa.
 ///
-/// The wording says what to do rather than what went wrong: nothing here is
-/// the user's mistake, and "the link expired" would be a lie that sends them
-/// round the same loop.
-class RecoveryLinkFailedScreen extends StatelessWidget {
+/// A rejected `token_hash` means expired or already used; it carries its own
+/// proof, so where it was opened is irrelevant. A failed `?code=` means the
+/// PKCE code verifier is missing, which happens exactly when the link is
+/// opened outside the browser that requested it.
+///
+/// The wording says what to do rather than what went wrong. Neither case is
+/// the user's mistake, and "the link expired" as a blanket answer would be a
+/// guess that sends half of them round the same loop.
+class RecoveryLinkFailedScreen extends ConsumerWidget {
   const RecoveryLinkFailedScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final linkWasSpent =
+        ref.watch(recoveryLinkOutcomeProvider) == RecoveryLinkResult.failed;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -35,14 +43,21 @@ class RecoveryLinkFailedScreen extends StatelessWidget {
                   Icon(Icons.link_off_outlined,
                       size: 48, color: theme.colorScheme.primary),
                   const SizedBox(height: AppSpacing.md),
-                  Text('That link could not be opened here',
+                  Text(
+                      linkWasSpent
+                          ? 'That link has already been used'
+                          : 'That link could not be opened here',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'A reset link only works in the same browser you asked for '
-                    'it from, on the same device. Ask for a new one here and '
-                    'open it from this browser.',
+                    linkWasSpent
+                        ? 'Reset links expire, and each one can only be used '
+                            'once. Ask for a new one and open it as soon as it '
+                            'arrives.'
+                        : 'A reset link only works in the same browser you '
+                            'asked for it from, on the same device. Ask for a '
+                            'new one here and open it from this browser.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium,
                   ),

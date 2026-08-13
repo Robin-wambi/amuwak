@@ -46,24 +46,23 @@ final passwordResetRedirectProvider = Provider<String?>((ref) {
 /// navigation only rewrites the fragment and leaves the query alone.
 final launchUriProvider = Provider<Uri>((ref) => Uri.base);
 
-/// Whether a recovery link arrived but its one-time `?code=` never became a
-/// session.
+/// What bootstrap made of the launch URL. Overridden in `main.dart`; the
+/// default covers tests and any path that never ran bootstrap.
+final recoveryLinkOutcomeProvider =
+    Provider<RecoveryLinkResult>((ref) => RecoveryLinkResult.none);
+
+/// Whether a recovery link arrived and never became a session, which puts the
+/// router on [kRecoveryLinkFailedRoute] instead of dropping the user on /login
+/// with nothing to explain it.
 ///
-/// PKCE writes the code verifier to the localStorage of the browser that asked
-/// for the reset, so a link opened anywhere else — another device, or an email
-/// client's isolated in-app browser — cannot complete the exchange. GoTrue
-/// reports that as an error on the auth stream and no session is established,
-/// which on its own looks exactly like an ordinary signed-out visit: the user
-/// is dropped on /login and left to request more links that cannot work
-/// either.
-///
-/// Both halves matter. A failed sign-in errors the same stream, so the `?code=`
-/// is what says a recovery link is the thing that went wrong.
-final recoveryLinkFailedProvider = Provider<bool>((ref) {
-  final arrivedOnALink =
-      ref.watch(launchUriProvider).queryParameters.containsKey('code');
-  return arrivedOnALink && ref.watch(authStateProvider).hasError;
-});
+/// The staff app asks the same question of the same [recoveryLinkFailed], from
+/// its own provider — one auth project emits one recovery template, so a link
+/// shape that reaches one app reaches both.
+final recoveryLinkFailedProvider = Provider<bool>((ref) => recoveryLinkFailed(
+      outcome: ref.watch(recoveryLinkOutcomeProvider),
+      launchUri: ref.watch(launchUriProvider),
+      authStreamHasError: ref.watch(authStateProvider).hasError,
+    ));
 
 class RecoveringNotifier extends Notifier<bool> {
   @override

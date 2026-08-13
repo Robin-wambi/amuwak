@@ -54,6 +54,30 @@ key is public by design — it ships in the web bundle — and is not the concer
 - Redirect URLs: add `https://amuwak-customer.pages.dev/**`. Today's Site URL
   targets the staff app (`docs/staff-invites.md:48`), so without this a customer
   reset lands on the wrong application.
+- **Recovery email must link with a token hash, not `{{ .ConfirmationURL }}`.**
+  That default resolves to a PKCE `?code=`, which can only be exchanged against
+  a verifier held in the localStorage of the browser that *requested* the reset
+  — so a link requested on a laptop and opened on a phone, or in an email
+  client's own in-app browser, cannot complete at all. Emit instead:
+
+      {{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery
+
+  Where this lives depends on the sender: with Supabase's built-in mailer it is
+  Dashboard → Authentication → Emails (mirror of `supabase/templates/`); once
+  the Send Email Hook is live it is the hook's own template, built from the
+  payload's `token_hash` and `redirect_to`. `{{ .RedirectTo }}`, never a
+  hardcoded origin — one template serves both apps and the Site URL can only
+  name one of them.
+
+  App-side support ships ahead of this and is inert until the template changes,
+  so the two can land independently.
+
+  One asymmetry to keep in mind when the redirect URLs above are added: the
+  customer PWA passes its own origin, but the staff app passes none and leans
+  on the Site URL naming it. That is deliberate — staff is served from a Pages
+  sub-path (`/amuwak/`) that a bare origin would drop — but it means moving the
+  Site URL to the customer app silently breaks riders' reset links, and staff
+  would have to start passing an explicit origin-plus-base-path first.
 - Verify in dashboard: recovery-link expiry, and whether password change revokes
   other sessions.
 

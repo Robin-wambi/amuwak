@@ -183,5 +183,31 @@ void main() {
           exchangeFailed: false);
       expect(container.read(recoveryLinkFailedProvider), isFalse);
     });
+
+    test('is true when a token-hash link was rejected at bootstrap', () async {
+      // The token_hash shape never touches the auth stream on failure —
+      // verifyOtp just throws — so bootstrap records the verdict instead.
+      final container = ProviderContainer(overrides: [
+        launchUriProvider.overrideWithValue(Uri.parse(
+            'https://amuwak-customer.pages.dev/?token_hash=stale&type=recovery')),
+        recoveryLinkOutcomeProvider
+            .overrideWithValue(RecoveryLinkResult.failed),
+      ]);
+      addTearDown(container.dispose);
+
+      expect(container.read(recoveryLinkFailedProvider), isTrue);
+    });
+
+    test('is false when a token-hash link was redeemed', () async {
+      final container = ProviderContainer(overrides: [
+        launchUriProvider.overrideWithValue(Uri.parse(
+            'https://amuwak-customer.pages.dev/?token_hash=fresh&type=recovery')),
+        recoveryLinkOutcomeProvider
+            .overrideWithValue(RecoveryLinkResult.verified),
+      ]);
+      addTearDown(container.dispose);
+
+      expect(container.read(recoveryLinkFailedProvider), isFalse);
+    });
   });
 }

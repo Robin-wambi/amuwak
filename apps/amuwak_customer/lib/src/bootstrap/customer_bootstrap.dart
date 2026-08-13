@@ -14,10 +14,11 @@ import 'timeout_http_client.dart';
 class CustomerBootstrap {
   const CustomerBootstrap._();
 
-  /// Returns the store `main.dart` hands to the provider scope. Primed here
-  /// because [RecoveryIntentStore] is read synchronously from the router's
-  /// redirect, which cannot await anything.
-  static Future<RecoveryIntentStore> initialize() async {
+  /// What `main.dart` hands to the provider scope.
+  ///
+  /// Both fields are read synchronously — the router's redirect cannot await —
+  /// so both are settled here, before the first frame.
+  static Future<CustomerBoot> initialize() async {
     WidgetsFlutterBinding.ensureInitialized();
     final config = AppConfig.fromEnvironment()..validate();
     final prefs = await SharedPreferences.getInstance();
@@ -26,6 +27,28 @@ class CustomerBootstrap {
       anonKey: config.supabaseAnonKey,
       httpClient: TimeoutHttpClient(http.Client()),
     );
-    return PersistentRecoveryIntentStore(prefs);
+    // Before runApp on purpose: verifying raises `passwordRecovery`, and the
+    // router seeds the recovery flag from that event. It still reaches the
+    // router despite firing this early, because GoTrue's auth stream replays
+    // its last event to a new subscriber.
+    final link = await completeRecoveryLink(
+      uri: Uri.base,
+      auth: AuthService(),
+    );
+    return CustomerBoot(
+      recoveryIntent: PersistentRecoveryIntentStore(prefs),
+      recoveryLink: link,
+    );
   }
+}
+
+/// The handful of things that have to be settled before the first frame.
+class CustomerBoot {
+  const CustomerBoot({
+    required this.recoveryIntent,
+    required this.recoveryLink,
+  });
+
+  final RecoveryIntentStore recoveryIntent;
+  final RecoveryLinkResult recoveryLink;
 }
