@@ -71,6 +71,13 @@ key is public by design — it ships in the web bundle — and is not the concer
 
   App-side support ships ahead of this and is inert until the template changes,
   so the two can land independently.
+
+  One asymmetry to keep in mind when the redirect URLs above are added: the
+  customer PWA passes its own origin, but the staff app passes none and leans
+  on the Site URL naming it. That is deliberate — staff is served from a Pages
+  sub-path (`/amuwak/`) that a bare origin would drop — but it means moving the
+  Site URL to the customer app silently breaks riders' reset links, and staff
+  would have to start passing an explicit origin-plus-base-path first.
 - Verify in dashboard: recovery-link expiry, and whether password change revokes
   other sessions.
 

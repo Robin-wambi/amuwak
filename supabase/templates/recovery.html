@@ -12,10 +12,23 @@
   {{ .TokenHash }} carries its own proof, so the app can redeem it with
   verifyOtp from anywhere. See completeRecoveryLink in amuwak_core.
 
-  {{ .RedirectTo }} is the origin the app passed to resetPasswordForEmail —
-  the customer PWA for a customer, the staff PWA for a rider. It must not be
-  hardcoded: both apps share this one template, and the project's Site URL can
-  only name one of them.
+  {{ .RedirectTo }} must not be hardcoded: both apps share this one template,
+  and it has to land the user back in the app they asked from.
+
+  The two apps get there differently, which is worth knowing before changing
+  either. The customer PWA passes its own origin to resetPasswordForEmail
+  (passwordResetRedirectProvider) because it is served from a domain root, so
+  an origin is the whole URL. The staff app passes nothing and falls back to
+  the project's Site URL, which names the staff PWA — deliberately, because it
+  is served from a Pages sub-path (/amuwak/) that a bare origin would drop.
+
+  So a rider's link is only correct while the Site URL names the staff app. If
+  that ever moves to the customer PWA, staff resets have to start passing an
+  explicit origin-plus-base-path of their own.
+
+  Appending to {{ .RedirectTo }} assumes it carries no query string of its own.
+  Both paths above satisfy that; a reset triggered by hand from the dashboard
+  with some other redirect_to would not.
 -->
 <h2>Set a new password</h2>
 

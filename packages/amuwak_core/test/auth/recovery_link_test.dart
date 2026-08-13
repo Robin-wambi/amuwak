@@ -68,4 +68,67 @@ void main() {
 
     expect(result, RecoveryLinkResult.failed);
   });
+
+  group('recoveryLinkFailed', () {
+    test('a rejected token hash is a failure', () {
+      // Bootstrap's verdict is the only record: a rejected hash establishes no
+      // session and never reaches the auth stream at all.
+      expect(
+        recoveryLinkFailed(
+          outcome: RecoveryLinkResult.failed,
+          launchUri: url(''),
+          authStreamHasError: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a PKCE link that errored the auth stream is a failure', () {
+      // supabase_flutter redeems `?code=` itself and reports the failure as a
+      // stream error rather than a return value.
+      expect(
+        recoveryLinkFailed(
+          outcome: RecoveryLinkResult.none,
+          launchUri: url('?code=abc123'),
+          authStreamHasError: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a stream error without a recovery link is not', () {
+      // A failed sign-in errors the same stream. The `code` parameter is what
+      // says an emailed link is the thing that went wrong.
+      expect(
+        recoveryLinkFailed(
+          outcome: RecoveryLinkResult.none,
+          launchUri: url(''),
+          authStreamHasError: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a PKCE link that redeemed cleanly is not', () {
+      expect(
+        recoveryLinkFailed(
+          outcome: RecoveryLinkResult.none,
+          launchUri: url('?code=abc123'),
+          authStreamHasError: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a redeemed token hash is not', () {
+      expect(
+        recoveryLinkFailed(
+          outcome: RecoveryLinkResult.verified,
+          launchUri: url('?token_hash=abc123&type=recovery'),
+          authStreamHasError: false,
+        ),
+        isFalse,
+      );
+    });
+  });
 }

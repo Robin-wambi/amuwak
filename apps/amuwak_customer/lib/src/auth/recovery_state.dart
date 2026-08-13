@@ -51,27 +51,18 @@ final launchUriProvider = Provider<Uri>((ref) => Uri.base);
 final recoveryLinkOutcomeProvider =
     Provider<RecoveryLinkResult>((ref) => RecoveryLinkResult.none);
 
-/// Whether a recovery link arrived and never became a session.
+/// Whether a recovery link arrived and never became a session, which puts the
+/// router on [kRecoveryLinkFailedRoute] instead of dropping the user on /login
+/// with nothing to explain it.
 ///
-/// Two link shapes fail two different ways, and the user cannot tell either of
-/// them from an ordinary signed-out visit — they are dropped on /login with
-/// nothing to say the emailed link was the problem, and go on requesting more.
-///
-/// `?token_hash=` is redeemed by [completeRecoveryLink] during bootstrap, so a
-/// rejection is a return value, not anything on the auth stream.
-///
-/// `?code=` is redeemed by supabase_flutter, which reports the failure as an
-/// error on the auth stream. Both halves of that test matter: a failed sign-in
-/// errors the same stream, so the `code` parameter is what says a recovery
-/// link is the thing that went wrong.
-final recoveryLinkFailedProvider = Provider<bool>((ref) {
-  if (ref.watch(recoveryLinkOutcomeProvider) == RecoveryLinkResult.failed) {
-    return true;
-  }
-  final arrivedOnAPkceLink =
-      ref.watch(launchUriProvider).queryParameters.containsKey('code');
-  return arrivedOnAPkceLink && ref.watch(authStateProvider).hasError;
-});
+/// The staff app asks the same question of the same [recoveryLinkFailed], from
+/// its own provider — one auth project emits one recovery template, so a link
+/// shape that reaches one app reaches both.
+final recoveryLinkFailedProvider = Provider<bool>((ref) => recoveryLinkFailed(
+      outcome: ref.watch(recoveryLinkOutcomeProvider),
+      launchUri: ref.watch(launchUriProvider),
+      authStreamHasError: ref.watch(authStateProvider).hasError,
+    ));
 
 class RecoveringNotifier extends Notifier<bool> {
   @override

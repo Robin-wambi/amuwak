@@ -10,7 +10,11 @@ import 'timeout_http_client.dart';
 class AppBootstrap {
   const AppBootstrap._();
 
-  static Future<void> initialize() async {
+  /// Returns what the launch URL turned out to be, which `main.dart` hands to
+  /// [recoveryLinkOutcomeProvider]. A rejected token hash establishes no
+  /// session and never reaches the auth stream, so this return value is the
+  /// only record that the emailed link was the problem.
+  static Future<RecoveryLinkResult> initialize() async {
     WidgetsFlutterBinding.ensureInitialized();
     final config = AppConfig.fromEnvironment()..validate();
     // Cap every PostgREST/RPC/Storage/Auth call so a poor or dead network fails
@@ -30,12 +34,14 @@ class AppBootstrap {
     // a new subscriber.
     //
     // Inert for the invite/`?code=` links supabase_flutter already handles.
-    await completeRecoveryLink(uri: Uri.base, auth: AuthService());
+    final recoveryLink =
+        await completeRecoveryLink(uri: Uri.base, auth: AuthService());
     // The local Drift DB is opened lazily by the SyncOrchestrator (via
     // appDatabaseProvider) once a session is active — see main.dart's
     // syncLifecycleProvider — and the SyncPuller fills it from Supabase on
     // sign-in. We intentionally don't eagerly open/seed it here. [runSeed] below
     // stays for tests that want a pre-populated DB without spinning up Supabase.
+    return recoveryLink;
   }
 
   /// Test-visible seed entry — accepts an injected DB + seeder so tests

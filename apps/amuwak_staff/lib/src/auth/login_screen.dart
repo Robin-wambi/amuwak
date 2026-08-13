@@ -2,6 +2,8 @@ import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'recovery_link_state.dart';
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -121,6 +123,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     'Login to manage laundry orders',
                     style: TextStyle(fontSize: 16, color: AppColors.secondaryText),
                   ),
+                  if (ref.watch(recoveryLinkFailedProvider)) ...[
+                    const SizedBox(height: 24),
+                    _RecoveryLinkNotice(
+                      linkWasSpent: ref.watch(recoveryLinkOutcomeProvider) ==
+                          RecoveryLinkResult.failed,
+                    ),
+                  ],
                   const SizedBox(height: 32),
                   TextFormField(
                     controller: _emailController,
@@ -189,6 +198,62 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Says why an emailed recovery link did nothing.
+///
+/// Without it a rider who opens a dead link lands on a plain sign-in screen —
+/// identical to an ordinary visit — with no reason to think the link was the
+/// problem, and asks for another one that fails the same way.
+///
+/// The two causes get different copy because they need different actions, and
+/// the wrong one wastes the rider's time: telling someone with a spent token to
+/// "try the same browser" sends them hunting a device fault that is not there.
+///
+/// A notice rather than the customer app's dedicated screen, because this app
+/// has no router and its "Forgot password?" is already on this screen — so the
+/// fix is one tap below the explanation.
+class _RecoveryLinkNotice extends StatelessWidget {
+  const _RecoveryLinkNotice({required this.linkWasSpent});
+
+  final bool linkWasSpent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(AppRadii.field),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            linkWasSpent
+                ? 'That link has already been used'
+                : 'That link could not be opened here',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSecondaryContainer,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            linkWasSpent
+                ? 'Reset links expire, and each one can only be used once. Ask '
+                    'for a new one below and open it as soon as it arrives.'
+                : 'That link only works in the same browser you asked for it '
+                    'from, on the same device. Ask for a new one below and open '
+                    'it from this browser.',
+            style: TextStyle(color: colorScheme.onSecondaryContainer),
+          ),
+        ],
       ),
     );
   }

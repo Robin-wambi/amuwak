@@ -54,3 +54,36 @@ Future<RecoveryLinkResult> completeRecoveryLink({
     return RecoveryLinkResult.failed;
   }
 }
+
+/// Whether a recovery link arrived and never became a session.
+///
+/// Both apps need this and neither can infer it from the auth state alone: a
+/// link that fails leaves the user signed out, which is indistinguishable from
+/// an ordinary visit. Left unsaid, they are dropped on the sign-in screen with
+/// nothing to explain why the emailed link did nothing, and go on requesting
+/// more of them.
+///
+/// The two link shapes fail in two different places, so both are checked here
+/// rather than in each app:
+///
+///   * `?token_hash=` is redeemed by [completeRecoveryLink] during bootstrap,
+///     so a rejection is [outcome], a return value — it never reaches the auth
+///     stream at all.
+///   * `?code=` is redeemed by supabase_flutter, which reports the failure as
+///     an error on the auth stream.
+///
+/// [authStreamHasError] alone is not enough for the second: a failed sign-in
+/// errors the same stream. The `code` parameter on [launchUri] is what says an
+/// emailed link is the thing that went wrong.
+///
+/// Shared rather than duplicated per app on purpose — a new link shape has to
+/// be handled in one place, not remembered in two.
+bool recoveryLinkFailed({
+  required RecoveryLinkResult outcome,
+  required Uri launchUri,
+  required bool authStreamHasError,
+}) {
+  if (outcome == RecoveryLinkResult.failed) return true;
+  final arrivedOnAPkceLink = launchUri.queryParameters.containsKey('code');
+  return arrivedOnAPkceLink && authStreamHasError;
+}

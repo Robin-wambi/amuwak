@@ -2,20 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:amuwak_core/amuwak_core.dart';
 import 'package:amuwak_staff/src/auth/login_screen.dart';
+import 'package:amuwak_staff/src/auth/recovery_link_state.dart';
 
 class _MockAuthService extends Mock implements AuthService {}
 
 Future<void> _pumpLogin(
   WidgetTester tester, {
   required AuthService authService,
+  RecoveryLinkResult recoveryLink = RecoveryLinkResult.none,
+  String launchUrl = 'https://robin-wambi.github.io/amuwak/',
+  bool codeExchangeFailed = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         authServiceProvider.overrideWithValue(authService),
+        recoveryLinkOutcomeProvider.overrideWithValue(recoveryLink),
+        launchUriProvider.overrideWithValue(Uri.parse(launchUrl)),
+        // How supabase_flutter reports a `?code=` it could not exchange: an
+        // error on the auth stream, never a return value.
+        if (codeExchangeFailed)
+          authStateProvider.overrideWith((ref) => Stream<AuthState>.error(
+              const AuthException(
+                  'Code verifier could not be found in local storage.'))),
       ],
       child: const MaterialApp(home: LoginScreen()),
     ),
@@ -185,5 +198,70 @@ void main() {
 
     verify(() => auth.sendPasswordReset('rider1@amuwak.co')).called(1);
     expect(find.textContaining('reset link'), findsOneWidget);
+  });
+
+  group('recovery link notice', () {
+    testWidgets('says nothing on an ordinary visit', (tester) async {
+      await _pumpLogin(tester, authService: auth);
+
+      expect(find.textContaining('That link'), findsNothing);
+    });
+
+    testWidgets('explains a token hash the server rejected', (tester) async {
+      // The cross-device shape. A rider who opened the mail on their phone got
+      // no session and, without this, no reason to think the link was why.
+      await _pumpLogin(
+        tester,
+        authService: auth,
+        recoveryLink: RecoveryLinkResult.failed,
+        launchUrl:
+            'https://robin-wambi.github.io/amuwak/?token_hash=stale&type=recovery',
+      );
+
+      expect(find.text('That link has already been used'), findsOneWidget);
+      // Where it was opened is irrelevant for a spent token, and saying
+      // otherwise sends the rider hunting a device fault that is not there.
+      expect(find.textContaining('same browser'), findsNothing);
+    });
+
+    testWidgets('explains a PKCE code that could not be exchanged',
+        (tester) async {
+      await _pumpLogin(
+        tester,
+        authService: auth,
+        launchUrl: 'https://robin-wambi.github.io/amuwak/?code=abc123',
+        codeExchangeFailed: true,
+      );
+      await tester.pump();
+
+      expect(find.text('That link could not be opened here'), findsOneWidget);
+      expect(find.textContaining('same browser'), findsOneWidget);
+    });
+
+    testWidgets('does not blame a link for an ordinary failed sign-in',
+        (tester) async {
+      // A mistyped password errors the same auth stream. Without the URL check
+      // every bad login would accuse an email nobody opened.
+      await _pumpLogin(
+        tester,
+        authService: auth,
+        codeExchangeFailed: true,
+      );
+      await tester.pump();
+
+      expect(find.textContaining('That link'), findsNothing);
+    });
+
+    testWidgets('leaves the rider a way to get a fresh link', (tester) async {
+      // The notice is only useful next to the fix, which is why it lives on
+      // this screen rather than a dead-end of its own.
+      await _pumpLogin(
+        tester,
+        authService: auth,
+        recoveryLink: RecoveryLinkResult.failed,
+      );
+
+      expect(find.text('Forgot password?'), findsOneWidget);
+    });
   });
 }
