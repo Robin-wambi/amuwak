@@ -23,7 +23,7 @@ onboarded at all**.
 
 ### A second, independent defect in the same area
 
-`supabase/functions/invite-staff/index.ts:181` sends its set-password email
+`supabase/functions/invite-staff/index.ts:177` sends its set-password email
 with `resetPasswordForEmail` on a plain `createClient(supabaseUrl, anonKey)`.
 supabase-js defaults to the **implicit** flow, so no `code_challenge` is sent
 and GoTrue builds the link as `#access_token=…&type=recovery`. Both Flutter
@@ -202,13 +202,14 @@ in the codebase.
 
 A migration adding:
 
-- the insert-only audit table (shape mirrors 0055);
+- the insert-only audit table (shape mirrors `0056_mfa_reset_audit.sql`);
 - `customers.must_change_password`;
 - a rename of `staff.must_change_pin`. The column has existed since
-  `0002_staff_and_customers.sql:15`, is synced into Drift and mapped from
-  Supabase, and **nothing has ever read it** — it appears only in generated
-  code. Repurposing it is right; keeping a name that says "pin" while it holds
-  a password flag is how the next person loses an hour.
+  `0002_staff_and_customers.sql:15` and is written by hand-written sync code
+  (`supabase_mappers.dart:44`, `sync_puller.dart:236`) as well as appearing in
+  generated Drift code — but **nothing has ever acted on the value**: no UI, no
+  gate, no branch reads it. Repurposing it is right; keeping a name that says
+  "pin" while it holds a password flag is how the next person loses an hour.
 
 ### Resolved details
 
@@ -254,9 +255,9 @@ It is the strongest argument for revisiting the domain decision.
 4. **Piece 1, the flag.** No dependencies — it can move in parallel with all of
    the above.
 5. **Piece 3, temporary passwords.** Leans on #106's audit-table and
-   permission-check patterns, which live on the unmerged
-   `feat/mfa-manager-reset` branch: either follow that branch in, or duplicate
-   its migration shape.
+   permission-check patterns, which have since shipped: `is_active_manager()`
+   is in `0055_min_two_managers.sql` and the audit-table shape is
+   `0056_mfa_reset_audit.sql`. Reuse both rather than duplicating them.
 
 Order within step 1 matters and is easy to get backwards. Flipping the template
 before the apps are deployed breaks the `?code=` links they *do* understand.

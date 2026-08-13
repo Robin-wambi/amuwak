@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Design source of truth: `docs/superpowers/specs/2026-08-04-interim-account-recovery-design.md`. Read it before starting.
-- **Migration numbering starts at 0056.** `main` is at 0053; the unmerged `feat/mfa-manager-reset` (#106) owns 0054 and 0055. A duplicate prefix trips a CI guardrail.
+- **Migration numbering starts at 0058.** `main` already carries 0054, 0055 and 0056 — #106's work shipped — and `0057_table_grants.sql` lands with #113. A duplicate prefix trips a CI guardrail, and this number goes stale every time a migration merges: run `supabase migration list` before starting and renumber if it has moved again.
 - **Issuing a temporary password is managers-only, for every target — staff and customer alike.** No task may relax this.
 - The Edge Function must never log, store, or email a generated password.
 - TDD throughout: write the failing test, watch it fail for the right reason, then implement. Watching it fail is not optional — a test that never failed proves nothing.
@@ -32,9 +32,9 @@
 - Modify `apps/amuwak_customer/test/auth/router_redirect_test.dart`, `apps/amuwak_customer/test/auth/login_screen_test.dart`.
 
 **Piece 3 — temporary passwords**
-- Create `supabase/migrations/0056_password_reset_audit.sql` — helper, audit table, customer flag, staff column rename.
-- Create `supabase/migrations/0057_must_change_password_claim.sql` — extend the access-token hook.
-- Create `supabase/tests/0056_password_reset_audit_test.sql`, `supabase/tests/0057_must_change_password_claim_test.sql` — pgTAP.
+- Create `supabase/migrations/0058_password_reset_audit.sql` — audit table, customer flag, staff column rename.
+- Create `supabase/migrations/0059_must_change_password_claim.sql` — extend the access-token hook.
+- Create `supabase/tests/0058_password_reset_audit_test.sql`, `supabase/tests/0059_must_change_password_claim_test.sql` — pgTAP.
 - Create `supabase/functions/issue-temporary-password/index.ts`.
 - Modify `packages/amuwak_core/lib/src/auth/session.dart` — read the claim.
 - Modify `packages/amuwak_core/test/auth/session_test.dart`.
@@ -376,18 +376,19 @@ git commit -m "feat(customer): hide self-service reset behind the build flag" --
 
 ---
 
-## Task 3: Migration 0056 — audit table, flags, manager helper
+## Task 3: Migration 0058 — audit table and forced-change flags
 
 **Files:**
-- Create: `supabase/migrations/0056_password_reset_audit.sql`
-- Test: `supabase/tests/0056_password_reset_audit_test.sql`
+- Create: `supabase/migrations/0058_password_reset_audit.sql`
+- Test: `supabase/tests/0058_password_reset_audit_test.sql`
 
 **Interfaces:**
-- Produces: `is_active_manager(uuid) → boolean`; table `password_reset_audit`; column `customers.must_change_password`; column `staff.must_change_password` (renamed from `must_change_pin`).
+- Produces: table `password_reset_audit`; column `customers.must_change_password`; column `staff.must_change_password` (renamed from `must_change_pin`).
+- Consumes: `is_active_manager(uuid) → boolean`, already shipped in `0055_min_two_managers.sql`.
 
 - [ ] **Step 1: Write the failing pgTAP test**
 
-Create `supabase/tests/0056_password_reset_audit_test.sql`:
+Create `supabase/tests/0058_password_reset_audit_test.sql`:
 
 ```sql
 BEGIN;
@@ -420,14 +421,14 @@ ROLLBACK;
 Run: `supabase start -x storage-api,imgproxy --ignore-health-check && supabase test db`
 Expected: FAIL — `password_reset_audit` does not exist.
 
-Note: `0015_powersync` fails 15/15 on this repo and always has. A non-zero exit is only your regression if a `0056` assertion is among the failures.
+Note: `0015_powersync` fails 15/15 on this repo and always has. A non-zero exit is only your regression if a `0058` assertion is among the failures.
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/0056_password_reset_audit.sql`:
+Create `supabase/migrations/0058_password_reset_audit.sql`:
 
 ```sql
--- 0056_password_reset_audit.sql
+-- 0058_password_reset_audit.sql
 -- Email cannot be delivered yet, so a manager issues a temporary password in
 -- person instead. That is a deliberate, privileged weakening of someone's
 -- account and must never be invisible: who did it, to whom, and when.
@@ -437,23 +438,11 @@ Create `supabase/migrations/0056_password_reset_audit.sql`:
 -- policy grants INSERT, UPDATE or DELETE, so the log cannot be forged or
 -- erased from the app.
 
--- CREATE OR REPLACE and identical to 0054's definition on purpose: that
--- migration is on an unmerged branch (#106), and these two must be applicable
--- in either order without one clobbering the other.
-CREATE OR REPLACE FUNCTION is_active_manager(p_id uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path = public AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM staff
-     WHERE id = p_id
-       AND role = 'manager'
-       AND active
-       AND deleted_at IS NULL
-  )
-$$;
-
-REVOKE EXECUTE ON FUNCTION is_active_manager(uuid) FROM public, anon;
-GRANT  EXECUTE ON FUNCTION is_active_manager(uuid) TO authenticated;
+-- is_active_manager() is NOT declared here. It shipped in
+-- 0055_min_two_managers.sql:26 with the same body and the same grants, and
+-- 0055 always applies first, so this migration simply calls it. An earlier
+-- draft re-declared it defensively because #106 was unmerged; it has since
+-- landed, and a second copy would only be one more thing to keep in sync.
 
 CREATE TABLE password_reset_audit (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -480,7 +469,7 @@ ALTER TABLE password_reset_audit ENABLE ROW LEVEL SECURITY;
 CREATE POLICY password_reset_audit_manager_read ON password_reset_audit
   FOR SELECT USING (is_active_manager(auth.uid()));
 
--- The forced-change flags the access-token hook (0057) reads.
+-- The forced-change flags the access-token hook (0059) reads.
 ALTER TABLE customers ADD COLUMN must_change_password boolean NOT NULL
   DEFAULT false;
 
@@ -493,21 +482,21 @@ ALTER TABLE staff RENAME COLUMN must_change_pin TO must_change_password;
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `supabase db reset && supabase test db`
-Expected: the 8 `0056` assertions pass.
+Expected: the 8 `0058` assertions pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(db): audit table and forced-change flags for issued passwords" -- supabase/migrations/0056_password_reset_audit.sql supabase/tests/0056_password_reset_audit_test.sql
+git commit -m "feat(db): audit table and forced-change flags for issued passwords" -- supabase/migrations/0058_password_reset_audit.sql supabase/tests/0058_password_reset_audit_test.sql
 ```
 
 ---
 
-## Task 4: Migration 0057 — the `must_change_password` claim
+## Task 4: Migration 0059 — the `must_change_password` claim
 
 **Files:**
-- Create: `supabase/migrations/0057_must_change_password_claim.sql`
-- Test: `supabase/tests/0057_must_change_password_claim_test.sql`
+- Create: `supabase/migrations/0059_must_change_password_claim.sql`
+- Test: `supabase/tests/0059_must_change_password_claim_test.sql`
 
 **Interfaces:**
 - Consumes: the columns from Task 3.
@@ -515,7 +504,7 @@ git commit -m "feat(db): audit table and forced-change flags for issued password
 
 - [ ] **Step 1: Write the failing pgTAP test**
 
-Create `supabase/tests/0057_must_change_password_claim_test.sql`:
+Create `supabase/tests/0059_must_change_password_claim_test.sql`:
 
 ```sql
 BEGIN;
@@ -569,10 +558,10 @@ Expected: FAIL — the claim is absent, so the first two assertions return NULL.
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/0057_must_change_password_claim.sql`:
+Create `supabase/migrations/0059_must_change_password_claim.sql`:
 
 ```sql
--- 0057_must_change_password_claim.sql
+-- 0059_must_change_password_claim.sql
 -- Extend custom_access_token_hook (0009, fixed in 0025, extended in 0043) with
 -- a must_change_password claim.
 --
@@ -632,12 +621,12 @@ $$;
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `supabase db reset && supabase test db`
-Expected: the 3 `0057` assertions pass, and `0043`'s existing assertions still pass.
+Expected: the 3 `0059` assertions pass, and `0043`'s existing assertions still pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(db): emit must_change_password on the access token" -- supabase/migrations/0057_must_change_password_claim.sql supabase/tests/0057_must_change_password_claim_test.sql
+git commit -m "feat(db): emit must_change_password on the access token" -- supabase/migrations/0059_must_change_password_claim.sql supabase/tests/0059_must_change_password_claim_test.sql
 ```
 
 ---
@@ -716,7 +705,7 @@ In `session.dart`, below `roleFromAccessToken`:
 /// issue-temporary-password Edge Function), and cleared by the sign-out that
 /// completing a set-password performs — the next token simply lacks it.
 ///
-/// Fails OPEN: a missing claim means a token minted before 0057, not a forced
+/// Fails OPEN: a missing claim means a token minted before 0059, not a forced
 /// change. Defaulting to true would trap every existing session on the
 /// set-password screen.
 bool mustChangePasswordFromAccessToken(String? token) {
@@ -1017,7 +1006,7 @@ git commit -m "feat(staff): force a password change when one was issued" -- apps
 - Create: `supabase/functions/issue-temporary-password/index.ts`
 
 **Interfaces:**
-- Consumes: `is_active_manager`, `password_reset_audit`, both `must_change_password` columns (Task 3).
+- Consumes: `password_reset_audit` and both `must_change_password` columns (Task 3); `is_active_manager` (already shipped in `0055_min_two_managers.sql`).
 - Produces: `POST /issue-temporary-password` with body `{ target_kind: 'staff' | 'customer', target_id: uuid }` → `200 { password: string }`.
 
 There is no Deno test harness in this repo and `invite-staff` has none either, so this task's gate is the manual checklist in Step 3. Do not skip it.
@@ -1251,7 +1240,7 @@ Deno.serve(async (req) => {
 - [ ] **Step 2: Deploy in the right order**
 
 ```bash
-supabase db push          # 0056 and 0057 FIRST
+supabase db push          # 0058 and 0059 FIRST
 supabase functions deploy issue-temporary-password
 ```
 
@@ -1335,9 +1324,16 @@ void main() {
   test('surfaces the server refusal rather than a blank failure', () async {
     // A non-manager gets 403 here. The message is the whole point — a silent
     // failure looks identical to a network problem.
-    when(() => functions.invoke(any(), body: any(named: 'body'))).thenAnswer(
-      (_) async => FunctionResponse(
-          data: {'error': 'Only managers can issue a password'}, status: 403),
+    //
+    // thenThrow, not thenAnswer: invoke() throws FunctionException on a
+    // non-2xx, it does not return one. Mocking it as a return value would
+    // assert a contract the SDK does not have, and would pass against a
+    // service that mishandles every real refusal.
+    when(() => functions.invoke(any(), body: any(named: 'body'))).thenThrow(
+      FunctionException(
+        status: 403,
+        details: {'error': 'Only managers can issue a password'},
+      ),
     );
 
     await expectLater(
@@ -1403,20 +1399,38 @@ class IssueTemporaryPasswordService {
         'issue-temporary-password',
         body: {'target_kind': targetKind, 'target_id': targetId},
       );
-    } catch (e) {
+    } on FunctionException catch (e) {
+      // invoke() THROWS on any non-2xx rather than returning it, so this is
+      // the only path a refusal takes — there is no `response.status != 200`
+      // branch to reach. Getting this wrong is not cosmetic: the 403 a
+      // non-manager gets would fall to the generic catch below and be reported
+      // as an unreachable server, which is exactly the "indistinguishable from
+      // a dead network" failure this class exists to avoid.
+      throw IssuePasswordFailure(_messageFrom(e));
+    } catch (_) {
       throw IssuePasswordFailure('Could not reach the server. Try again.');
     }
 
+    // Validated outside the try: an IssuePasswordFailure thrown inside it
+    // would be swallowed by the generic catch and relabelled a network error.
     final data = response.data;
-    if (response.status != 200 || data is! Map) {
-      final message = data is Map ? data['error'] as String? : null;
-      throw IssuePasswordFailure(message ?? 'Could not issue a password.');
-    }
-    final password = data['password'];
+    final password = data is Map ? data['password'] : null;
     if (password is! String || password.isEmpty) {
       throw IssuePasswordFailure('Could not issue a password.');
     }
     return password;
+  }
+
+  /// Pulls the server's `{ "error": "..." }` body out of a FunctionException so
+  /// the manager sees the real reason rather than a bare status code. Mirrors
+  /// `ResetStaffMfaService._messageFrom`.
+  static String _messageFrom(FunctionException e) {
+    final details = e.details;
+    if (details is Map && details['error'] is String) {
+      return details['error'] as String;
+    }
+    if (details is String && details.isNotEmpty) return details;
+    return 'Could not issue a password.';
   }
 }
 ```
@@ -1700,7 +1714,7 @@ supabase start -x storage-api,imgproxy --ignore-health-check
 supabase db reset && supabase test db
 ```
 
-Expected: the `0056` and `0057` assertions pass. `0015_powersync` fails 15/15 and always has — a non-zero exit is only your regression if a `0056`/`0057` assertion is among the failures.
+Expected: the `0058` and `0059` assertions pass. `0015_powersync` fails 15/15 and always has — a non-zero exit is only your regression if a `0058`/`0059` assertion is among the failures.
 
 - [ ] **Step 4: Open the PR**
 
