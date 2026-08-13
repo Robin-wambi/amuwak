@@ -326,7 +326,7 @@ void main() {
     // initialSession — passwordRecovery does not fire a second time. Seeding
     // only from the event would drop a rider who reloaded mid-reset straight
     // onto the dashboard with their old password still live.
-    final store = InMemoryRecoveryIntentStore()..markPending();
+    final store = InMemoryRecoveryIntentStore()..markPending('u1');
 
     await _pumpGate(tester, overrides: [
       currentUserIdProvider.overrideWithValue('u1'),
@@ -339,6 +339,27 @@ void main() {
 
     expect(find.byType(SetPasswordScreen), findsOneWidget);
     expect(find.byType(StaffDashboardScreen), findsNothing);
+  });
+
+  testWidgets('does not hand one rider the reset another rider abandoned',
+      (tester) async {
+    // Riders share devices. An invite opened and abandoned by u1 leaves a
+    // pending intent behind; the session it belonged to can die without ever
+    // reaching this gate as `signedOut`, so nothing clears it. Unscoped, the
+    // next rider to sign in inherits it and is pushed onto SetPassword — which
+    // here also rewrites their display name, not just their password.
+    final store = InMemoryRecoveryIntentStore()..markPending('u1');
+
+    await _pumpGate(tester, overrides: [
+      currentUserIdProvider.overrideWithValue('u2'),
+      currentAuthEventProvider.overrideWithValue(AuthChangeEvent.signedIn),
+      authServiceProvider.overrideWithValue(_MockAuthService()),
+      recoveryIntentStoreProvider.overrideWithValue(store),
+      ..._dashboardStubs(),
+    ]);
+
+    expect(find.byType(StaffDashboardScreen), findsOneWidget);
+    expect(find.byType(SetPasswordScreen), findsNothing);
   });
 
   testWidgets('a finished reset is not demanded again after a reload',
@@ -361,14 +382,14 @@ void main() {
       container: container,
       child: const MaterialApp(home: AuthGate()),
     ));
-    expect(store.isPending, isTrue);
+    expect(store.isPendingFor('u1'), isTrue);
 
     container.read(_testEventProvider.notifier).state =
         AuthChangeEvent.signedOut;
     container.read(_testUserIdProvider.notifier).state = null;
     await tester.pump();
 
-    expect(store.isPending, isFalse);
+    expect(store.isPendingFor('u1'), isFalse);
   });
 
   testWidgets('routes back to LoginScreen when the session ends (sign-out)',

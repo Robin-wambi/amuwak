@@ -71,25 +71,29 @@ class RecoveringNotifier extends Notifier<bool> {
     final store = ref.read(recoveryIntentStoreProvider);
     ref.listen<AuthChangeEvent?>(currentAuthEventProvider, (_, next) {
       if (next == AuthChangeEvent.passwordRecovery) {
-        store.markPending();
+        final userId = ref.read(currentUserIdProvider);
+        if (userId != null) store.markPending(userId);
         state = true;
       } else if (next == AuthChangeEvent.signedOut) {
         store.clear();
         state = false;
       }
     });
+    final userId = ref.read(currentUserIdProvider);
     // Seed from the current event: supabase_flutter can exchange the ?code=
     // from a recovery link before the first frame builds, so the event may
     // already have fired by the time anything reads this.
     if (ref.read(currentAuthEventProvider) ==
         AuthChangeEvent.passwordRecovery) {
-      store.markPending();
+      if (userId != null) store.markPending(userId);
       return true;
     }
-    // Otherwise fall back to what a previous run recorded. A reload restores
-    // the Supabase session and raises `initialSession`, never a second
-    // `passwordRecovery`, so the event alone would forget an unfinished reset
-    // and let the user into the app with their old password still live.
-    return store.isPending;
+    // Otherwise fall back to what a previous run recorded, for this user only.
+    // A reload restores the Supabase session and raises `initialSession`,
+    // never a second `passwordRecovery`, so the event alone would forget an
+    // unfinished reset and let the user into the app with their old password
+    // still live. Scoped by user id because a reset abandoned on a shared
+    // browser otherwise greets whoever signs in next.
+    return userId != null && store.isPendingFor(userId);
   }
 }

@@ -47,12 +47,15 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     // Seed from the current event so a link opened on cold start is honoured,
     // then fall back to what a previous run recorded — a relaunch replays
     // `initialSession`, never a second `passwordRecovery`.
+    final userId = ref.read(currentUserIdProvider);
     if (ref.read(currentAuthEventProvider) ==
         AuthChangeEvent.passwordRecovery) {
-      _intent.markPending();
+      if (userId != null) _intent.markPending(userId);
       _recovering = true;
     } else {
-      _recovering = _intent.isPending;
+      // Only this user's own reset. A different rider's abandoned invite is
+      // not a reason to demand a password from whoever signs in next.
+      _recovering = userId != null && _intent.isPendingFor(userId);
     }
   }
 
@@ -60,7 +63,8 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   Widget build(BuildContext context) {
     ref.listen<AuthChangeEvent?>(currentAuthEventProvider, (prev, next) {
       if (next == AuthChangeEvent.passwordRecovery && !_recovering) {
-        _intent.markPending();
+        final userId = ref.read(currentUserIdProvider);
+        if (userId != null) _intent.markPending(userId);
         setState(() => _recovering = true);
       } else if (next == AuthChangeEvent.signedOut && _recovering) {
         _intent.clear();
