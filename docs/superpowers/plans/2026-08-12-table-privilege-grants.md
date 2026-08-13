@@ -10,6 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-12-table-privilege-grants-design.md`
 
+> **Executed 2026-08-12. This document is the plan as written, not as run** —
+> read the spec and the merged code for current truth. Three things changed
+> during execution, all recorded in the spec:
+>
+> 1. **Task 1's test SQL below is superseded.** `has_table_privilege` cannot see
+>    column grants, so it read `0046`'s deliberate
+>    `REVOKE UPDATE ON order_messages` + `GRANT UPDATE (read_at)` as a missing
+>    grant. Assertion 1 now accepts a table-level OR column-level grant. Copying
+>    the SQL below would reintroduce the false failure — and the obvious way to
+>    "fix" it is to widen the grant, which reopens the hole 0046 closed.
+> 2. **`has_column_privilege` rejects `DELETE`** (Postgres has no column-scoped
+>    DELETE); the guard is a `CASE`, whose evaluation order is guaranteed.
+> 3. **Assertion 3 checks all four ungated verbs**, not TRUNCATE alone, and the
+>    `service_role` grants are not uniform — see the spec.
+
 ## Global Constraints
 
 - **Migration number is `0057`.** Production is at `0056` as of 2026-08-12; `0055` and `0056` belong to PR #106 and are already applied. Do not renumber.

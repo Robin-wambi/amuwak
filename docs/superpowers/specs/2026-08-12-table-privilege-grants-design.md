@@ -55,9 +55,27 @@ has been done. The grant is nonetheless real and nothing in the repo removes it.
 ## The invariant
 
 > For every table in `public`, the privileges held by `authenticated` are
-> exactly the set of verbs that have at least one RLS policy on that table.
-> `anon` holds nothing. `service_role` holds the four CRUD verbs. Nobody but the
-> owner holds TRUNCATE, REFERENCES, TRIGGER or MAINTAIN.
+> exactly the set of verbs that have at least one RLS policy on that table —
+> counting a grant on any single column as holding that verb. `anon` holds
+> nothing. `service_role` holds the four CRUD verbs, less any a table's own
+> migration deliberately withholds. Nobody but the owner holds TRUNCATE,
+> REFERENCES, TRIGGER or MAINTAIN.
+
+**The column clause was added during implementation, and it is load-bearing.**
+`0046_customer_rls.sql:84-85` deliberately does `REVOKE UPDATE ON order_messages`
+followed by `GRANT UPDATE (read_at)`, because RLS gates which *rows* a caller may
+update and never which *columns* — without it, anyone who can mark a message read
+could also rewrite a staff reply's body or forge its sender. `has_table_privilege`
+does not see column grants, so the invariant as first written read that correct,
+deliberate arrangement as a missing grant and would have demanded the grant be
+widened. Any future statement of this rule must keep the column clause.
+
+**`service_role` is not uniform, for the same kind of reason.**
+`mfa_recovery_codes` gets nothing — `0054` states its two `SECURITY DEFINER`
+functions are the only way in, and both Edge Function call sites go through
+them. `mfa_reset_audit` gets `SELECT, INSERT` only: whoever holds the
+service-role key is the actor that table logs, so UPDATE or DELETE would let
+them erase the record of the reset they just performed.
 
 Both directions of the equality carry weight:
 
@@ -70,11 +88,14 @@ Every app table already has RLS enabled (`0007_rls.sql:23-31` and each later
 table's own migration), which is what makes tightening safe: any verb this
 removes was already refused at the row level.
 
-The invariant needs **no exception list**. The three tables that look like
-exceptions satisfy it naturally — `order_code_counters` and
-`mfa_recovery_codes` have no policy and receive no grant (empty equals empty),
-and `mfa_reset_audit` has one SELECT policy and one SELECT grant. A table that
-required an exception would be evidence the design is wrong.
+The invariant needs **no exception list**, and this survived contact with the
+schema. The four tables that look like exceptions all satisfy it naturally:
+`order_code_counters` and `mfa_recovery_codes` have no policy and receive no
+grant for `authenticated` (empty equals empty); `mfa_reset_audit` has one SELECT
+policy and one SELECT grant; and `order_messages` satisfies its UPDATE policy
+through the column grant above. A table that needed naming in the test would be
+evidence the design is wrong — the exception list was the thing worth avoiding,
+and it stayed avoided.
 
 ## The migration
 
@@ -98,11 +119,16 @@ GRANT <policy verbs>              ON <table> TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO service_role;
 ```
 
-`service_role` gets the four CRUD verbs and no more. It bypasses RLS by design
-and its key never reaches a browser, so its blast radius is already the whole
-database; the point of excluding TRUNCATE is that nothing uses it. Without this
-grant all three Edge Functions (`invite-staff`, `reset-staff-mfa`,
-`redeem-recovery-code`) break on any newly provisioned project.
+`service_role` gets the four CRUD verbs and no more — TRUNCATE excluded because
+nothing uses it. It bypasses RLS by design and its key never reaches a browser,
+so its blast radius is already the whole database. Without this grant all three
+Edge Functions (`invite-staff`, `reset-staff-mfa`, `redeem-recovery-code`) break
+on any newly provisioned project.
+
+Two tables take less than the four, and both are named above: `mfa_recovery_codes`
+takes nothing, `mfa_reset_audit` takes `SELECT, INSERT`. Where a table's own
+migration argues for a narrower server surface, that argument wins — this rule
+is a floor for what the server needs, not a ceiling on what a table may refuse.
 
 `anon` is granted nothing on any table.
 
@@ -134,20 +160,31 @@ gets in, and the mistake would be invisible until something broke.
 A new pgTAP file, written generically rather than as per-table assertions:
 
 1. For every table in `public`, the verbs `authenticated` holds equal the verbs
-   its policies name, with `FOR ALL` expanding to all four.
+   its policies name, with `FOR ALL` expanding to all four, and a grant on any
+   single column counting as holding that verb.
 2. `anon` holds no privilege on any table in `public`.
-3. No role other than the owner holds TRUNCATE on any table in `public`.
+3. No client role holds TRUNCATE, REFERENCES, TRIGGER or MAINTAIN on any table
+   in `public`. (All four, not TRUNCATE alone: the other three are equally
+   ungated by RLS, and checking one of four would let the rest arrive unnoticed.)
 4. Default privileges for future tables are empty for `anon`, `authenticated`
    and `service_role`.
+
+Nothing asserts `service_role`, deliberately: a fifth assertion would have to
+name `mfa_recovery_codes` in an allowlist, which forfeits the no-exception-list
+property above. The cost is that a forgotten server-side grant surfaces as a
+`42501` in an Edge Function rather than a red CI job — stated plainly in
+`docs/staff-invites.md` so nobody assumes otherwise.
 
 Generic assertions stay true as the schema grows. Add a table and forget its
 grants and assertion 1 fails; add a grant no policy backs and assertion 1 fails
 from the other side. Sixteen hand-written per-table assertions would rot the
 first time somebody added a seventeenth table.
 
-These run in the `db-tests` CI job (PR #112). Note that pgTAP has never run in
-CI before that PR, so this suite is the only thing standing behind the
-invariant.
+These run in the `db-tests` CI job, added on this same branch. Note that pgTAP
+had never run in CI at all before it, so this suite is the only thing standing
+behind the invariant — and it only ever proves the migration against a *fresh*
+database. It cannot prove the production path, which is why the post-push
+verification below is mandatory rather than optional.
 
 ## Rollout
 
@@ -172,15 +209,20 @@ were applied immediately after. This migration is therefore a single
 backlog — see `docs/superpowers/plans/2026-08-12-table-privilege-grants.md`'s
 own Rollout section, which reflects the same up-to-date state.
 
-## Sequencing
+## Sequencing — resolved
 
-The migration number depends on merge order. PR #106 owns `0055` and `0056` and
-is not merged. Landing this first would collide with it — the duplicate-prefix
-failure that silently skipped columns in the 0026 incident. Merge #106 first and
-number this `0057`.
+As designed, the number depended on merge order: PR #106 owned `0055` and `0056`
+and was unmerged, so landing this first would have collided with it — the
+duplicate-prefix failure that silently skipped columns in the 0026 incident.
 
-Order: **#106 → this → #112 goes green.** PR #112 stays red until this lands,
-because its six failures are this problem and nothing else.
+**What happened:** #106 was merged on 2026-08-12, this branch was rebased onto
+the result, and the grant matrix was regenerated so `mfa_reset_audit` was picked
+up rather than special-cased. `0057` is the settled number.
+
+The pgTAP CI job was originally its own PR (#112). This branch is stacked on it
+and contains its commit, so the workflow and the fix that makes it pass land
+together and no knowingly-red PR is ever merged. **#112 is superseded — close
+it, do not merge it**, or the workflow is installed twice.
 
 ## Out of scope
 
