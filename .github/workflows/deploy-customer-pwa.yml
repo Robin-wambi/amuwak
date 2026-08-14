@@ -39,7 +39,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: 3.32.0
+          # Single source of truth — see .fvmrc and "Toolchain" in README.md.
+          flutter-version-file: .fvmrc
 
       # Resolve from the workspace root: this is a pub workspace, so the app's
       # dependencies (including the local amuwak_core path dep) resolve there.

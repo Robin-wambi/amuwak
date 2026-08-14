@@ -13,11 +13,10 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          # Pin to the version the PWA is built/deployed with (deploy-pwa.yml).
-          # Floating `stable` drifts to newer Flutter and flags deprecations
-          # (e.g. FormField `value` -> `initialValue`, deprecated after 3.33.0)
-          # for APIs this app doesn't target, failing `melos run analyze`.
-          flutter-version: 3.32.0
+          # Toolchain version comes from .fvmrc so CI, the two deploy
+          # workflows, and local dev (`fvm use`) can never disagree. Bump it
+          # there, not here. See "Toolchain" in README.md for why it is pinned.
+          flutter-version-file: .fvmrc
       - run: flutter pub get
       # melos scripts shell out to `melos exec`, so the melos executable must be
       # on PATH (not just available via `dart run melos`).
