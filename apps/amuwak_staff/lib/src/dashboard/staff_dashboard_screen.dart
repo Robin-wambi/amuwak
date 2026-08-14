@@ -865,6 +865,7 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
                   orders: ordersAsync.valueOrNull,
                   onOpenFiltered: _openFilteredOrders,
                   onNewPickup: _handleNewPickup,
+                  onAddCustomer: _openCustomerForm,
                   onShowReport: _openReport,
                   onCheckOrder: _openOrderSearch,
                 ),
@@ -956,6 +957,7 @@ class _HomeTab extends StatelessWidget {
     required this.orders,
     required this.onOpenFiltered,
     required this.onNewPickup,
+    required this.onAddCustomer,
     required this.onShowReport,
     required this.onCheckOrder,
   });
@@ -963,6 +965,7 @@ class _HomeTab extends StatelessWidget {
   final List<LaundryOrder>? orders;
   final void Function(OrderFilter) onOpenFiltered;
   final VoidCallback onNewPickup;
+  final VoidCallback onAddCustomer;
   final VoidCallback onShowReport;
   final VoidCallback onCheckOrder;
 
@@ -1012,6 +1015,7 @@ class _HomeTab extends StatelessWidget {
         const SizedBox(height: AppSpacing.xxl),
         reveal(_QuickActions(
           onNewPickup: onNewPickup,
+          onAddCustomer: onAddCustomer,
           onShowReport: onShowReport,
           onCheckOrder: onCheckOrder,
         )),
@@ -1704,16 +1708,19 @@ class _GlanceTile extends StatelessWidget {
 class _QuickActions extends StatelessWidget {
   const _QuickActions({
     required this.onNewPickup,
+    required this.onAddCustomer,
     required this.onShowReport,
     required this.onCheckOrder,
   });
 
   final VoidCallback onNewPickup;
+  final VoidCallback onAddCustomer;
   final VoidCallback onShowReport;
   final VoidCallback onCheckOrder;
 
   @override
   Widget build(BuildContext context) {
+    const gap = SizedBox(width: AppSpacing.sm + 2);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1731,7 +1738,19 @@ class _QuickActions extends StatelessWidget {
                 onTap: onNewPickup,
               ),
             ),
-            const SizedBox(width: AppSpacing.sm + 2),
+            gap,
+            Expanded(
+              child: _ActionButton(
+                label: 'Add customer',
+                icon: Icons.person_add_alt_1_outlined,
+                onTap: onAddCustomer,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm + 2),
+        Row(
+          children: [
             Expanded(
               child: _ActionButton(
                 label: 'Check order',
@@ -1739,7 +1758,7 @@ class _QuickActions extends StatelessWidget {
                 onTap: onCheckOrder,
               ),
             ),
-            const SizedBox(width: AppSpacing.sm + 2),
+            gap,
             Expanded(
               child: _ActionButton(
                 label: 'Report',

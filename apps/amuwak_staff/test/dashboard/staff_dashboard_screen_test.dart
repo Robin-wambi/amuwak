@@ -394,6 +394,20 @@ void main() {
     expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
   });
 
+  testWidgets('Home: the Add customer quick action opens the form',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpDashboardWithDb(tester);
+
+    await tester.tap(find.text('Add customer'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CustomerFormScreen), findsOneWidget);
+  });
+
   testWidgets('Orders tab: a status chip filters the list', (tester) async {
     const pending = LaundryOrder(
       orderId: 'P1',
