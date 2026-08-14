@@ -6,7 +6,9 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../printing/label_printer.dart';
 import '../../printing/printer_store.dart';
+import '../../shared/file_share.dart';
 import 'printable_tag.dart';
+import 'tag_pdf.dart';
 
 /// Requests the Bluetooth permission needed to reach a printer. Returns whether
 /// access is granted. Injectable so tests don't hit the platform.
@@ -27,13 +29,18 @@ Future<bool> requestBluetoothPermissionDefault() async {
   return statuses.values.every((status) => status.isGranted);
 }
 
-/// The printable bag-tag preview plus a "Print tag" action.
+/// The printable bag-tag preview plus its "Print tag" and "Download PDF"
+/// actions.
 ///
 /// Reused wherever a tag is produced — at pickup (tag the bag) and as a reprint
 /// from the order screen. Owns the permission/pick/connect/print orchestration
 /// so callers only supply the order code, customer name, and a [LabelPrinter].
-/// When [labelPrinter] is null the button is hidden and only the preview shows,
-/// so a printerless site still sees the tag to copy/scan by hand.
+///
+/// "Print tag" needs a [LabelPrinter] and is hidden without one. "Download PDF"
+/// is always offered: a site with no Bluetooth label printer, and the web PWA,
+/// would otherwise have no way to get the tag out of the app at all. Both
+/// actions render the SAME captured raster, so a downloaded tag and a printed
+/// one cannot drift apart.
 class TagPrintView extends StatefulWidget {
   const TagPrintView({
     super.key,
@@ -43,6 +50,7 @@ class TagPrintView extends StatefulWidget {
     this.printerStore,
     this.captureTag = captureTagPng,
     this.requestBluetoothPermission = requestBluetoothPermissionDefault,
+    this.sharePdf = sharePdfFile,
     this.qrSize = 220,
     this.buttonKey = const Key('print_tag'),
   });
@@ -60,6 +68,10 @@ class TagPrintView extends StatefulWidget {
   /// Bluetooth permission gate. Injectable so tests skip the platform.
   final BluetoothPermissionRequester requestBluetoothPermission;
 
+  /// Delivers the tag PDF. Injectable so tests capture the bytes instead of
+  /// opening a share sheet.
+  final FileSharer sharePdf;
+
   final double qrSize;
 
   /// Key on the print button so screens can target their own instance in tests.
@@ -71,6 +83,7 @@ class TagPrintView extends StatefulWidget {
 
 class _TagPrintViewState extends State<TagPrintView> {
   bool _printing = false;
+  bool _downloading = false;
 
   /// Wraps the on-screen [PrintableTag] so [TagCapturer] rasterises exactly what
   /// is shown.
@@ -95,6 +108,27 @@ class _TagPrintViewState extends State<TagPrintView> {
       _snack('Could not print the tag: $e');
     } finally {
       if (mounted) setState(() => _printing = false);
+    }
+  }
+
+  /// Captures the tag and hands it to the OS as a PDF — a browser download on
+  /// the web PWA, the share sheet on Android/iOS.
+  ///
+  /// Deliberately independent of the printer: this is the path that works when
+  /// there is no label printer at all.
+  Future<void> _onDownloadPdf() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final png = await widget.captureTag(_tagBoundaryKey);
+      await widget.sharePdf(
+        await buildTagPdf(png),
+        '${widget.orderCode}.pdf',
+      );
+    } catch (e) {
+      _snack('Could not save the tag: $e');
+    } finally {
+      if (mounted) setState(() => _downloading = false);
     }
   }
 
@@ -184,15 +218,29 @@ class _TagPrintViewState extends State<TagPrintView> {
           boundaryKey: _tagBoundaryKey,
           qrSize: widget.qrSize,
         ),
-        if (canPrint) ...[
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            key: widget.buttonKey,
-            onPressed: _printing ? null : _onPrintTag,
-            icon: const Icon(Icons.print_outlined),
-            label: const Text('Print tag'),
-          ),
-        ],
+        const SizedBox(height: 16),
+        // Wraps rather than a Row so the two actions stack instead of
+        // overflowing on a narrow phone.
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: [
+            if (canPrint)
+              OutlinedButton.icon(
+                key: widget.buttonKey,
+                onPressed: _printing ? null : _onPrintTag,
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Print tag'),
+              ),
+            OutlinedButton.icon(
+              key: const Key('download_tag_pdf'),
+              onPressed: _downloading ? null : _onDownloadPdf,
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Download PDF'),
+            ),
+          ],
+        ),
       ],
     );
   }
