@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -165,5 +168,70 @@ void main() {
 
     expect(find.text("Couldn't load orders"), findsOneWidget);
     expect(find.byType(OrderCard), findsNothing);
+  });
+
+  group('CSV export', () {
+    /// Pumps the screen with a capturing sharer and returns the recorded call.
+    Future<({Uint8List? bytes, String? filename})> tapExport(
+      WidgetTester tester, {
+      required OrderFilter filter,
+      required List<LaundryOrder> orders,
+    }) async {
+      Uint8List? shared;
+      String? name;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ordersStreamProvider.overrideWith(
+              (ref) => Stream<List<LaundryOrder>>.value(orders),
+            ),
+          ],
+          child: MaterialApp(
+            home: OrderFilterScreen(
+              filter: filter,
+              onOrderTap: (_) {},
+              now: _fixedNow,
+              shareCsv: (bytes, filename) async {
+                shared = bytes;
+                name = filename;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('export_orders_csv')));
+      await tester.pumpAndSettle();
+      return (bytes: shared, filename: name);
+    }
+
+    testWidgets('exports the filtered orders, not every order', (tester) async {
+      final result = await tapExport(
+        tester,
+        filter: OrderFilter.pendingPickup,
+        orders: [_pending('Ada'), _completedToday('Bob')],
+      );
+
+      final csv = utf8.decode(result.bytes!.skip(3).toList());
+      expect(csv, contains('Ada'));
+      expect(csv, isNot(contains('Bob')));
+    });
+
+    testWidgets('names the file with a .csv extension', (tester) async {
+      final result = await tapExport(
+        tester,
+        filter: OrderFilter.all,
+        orders: [_pending('Ada')],
+      );
+
+      expect(result.filename, endsWith('.csv'));
+    });
+
+    testWidgets('offers no export action when the list is empty',
+        (tester) async {
+      await _pump(tester, filter: OrderFilter.all, orders: const []);
+
+      expect(find.byKey(const Key('export_orders_csv')), findsNothing);
+    });
   });
 }

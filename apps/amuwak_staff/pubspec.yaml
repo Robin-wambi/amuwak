@@ -58,6 +58,12 @@ dependencies:
   shared_preferences: ^2.5.0
   permission_handler: ^12.0.3
 
+  # Hands a generated file (orders CSV, bag-tag PDF) to the OS: a browser
+  # download on the web PWA, the share sheet on Android/iOS.
+  share_plus: ^10.1.4
+  # Bag tags as a PDF, for sites with no Bluetooth label printer.
+  pdf: ^3.11.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
