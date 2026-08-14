@@ -34,6 +34,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
   late final TextEditingController _notesController;
   late ServiceType _serviceType;
   DateTime? _scheduledFor;
+  DateTime? _expectedCollectionAt;
   bool _saving = false;
 
   @override
@@ -47,6 +48,7 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
     _notesController = TextEditingController(text: o.notes);
     _serviceType = o.serviceType;
     _scheduledFor = o.scheduledFor;
+    _expectedCollectionAt = o.expectedCollectionAt;
   }
 
   @override
@@ -79,6 +81,22 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
     });
   }
 
+  /// Date-only picker for the promised collection date (migration 0058). No time
+  /// step — collection is a date. Bounds mirror the schedule picker so a past
+  /// date can be corrected.
+  Future<void> _pickExpectedCollection() async {
+    final base = _expectedCollectionAt ?? DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime(base.year - 1),
+      lastDate: DateTime(base.year + 2),
+    );
+    if (date == null || !mounted) return;
+    setState(() =>
+        _expectedCollectionAt = DateTime(date.year, date.month, date.day));
+  }
+
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -105,6 +123,8 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
       notes: _notesController.text.trim(),
       scheduledFor: _scheduledFor,
       clearScheduledFor: _scheduledFor == null,
+      expectedCollectionAt: _expectedCollectionAt,
+      clearExpectedCollectionAt: _expectedCollectionAt == null,
       // Keep the derived label in step with the (possibly changed) schedule so
       // the in-memory order is self-consistent before the stream re-hydrates it.
       timeLabel: LaundryOrder.computeTimeLabel(scheduledFor: _scheduledFor),
@@ -216,6 +236,32 @@ class _EditOrderScreenState extends State<EditOrderScreen> {
                   TextButton(
                     key: const Key('edit_clear_schedule'),
                     onPressed: () => setState(() => _scheduledFor = null),
+                    child: const Text('Clear'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text('Ready by', style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _expectedCollectionAt == null
+                        ? 'Not set'
+                        : LaundryOrder.formatDay(_expectedCollectionAt!),
+                  ),
+                ),
+                TextButton(
+                  key: const Key('edit_pick_collection'),
+                  onPressed: _pickExpectedCollection,
+                  child: const Text('Change'),
+                ),
+                if (_expectedCollectionAt != null)
+                  TextButton(
+                    key: const Key('edit_clear_collection'),
+                    onPressed: () =>
+                        setState(() => _expectedCollectionAt = null),
                     child: const Text('Clear'),
                   ),
               ],
