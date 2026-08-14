@@ -54,8 +54,8 @@ void main() {
     expect(rows.first.orderCode, 'AMW-1');
   });
 
-  test('schemaVersion is 8', () {
-    expect(db.schemaVersion, 8);
+  test('schemaVersion is 9', () {
+    expect(db.schemaVersion, 9);
   });
 
   test('orders table exposes the pricing columns', () async {
@@ -148,6 +148,31 @@ void main() {
       final existing =
           await migrated.customSelect('SELECT cart_items FROM orders').get();
       expect(existing.single.read<String>('cart_items'), '[]');
+      await migrated.close();
+    } finally {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  test('onUpgrade from v8 adds the expected collection date', () async {
+    final tempDir = await Directory.systemTemp.createTemp('amuwak_mig_v8');
+    final file = File(p.join(tempDir.path, 'v8.sqlite'));
+    try {
+      final seed = sqlite3.open(file.path);
+      seed.execute(
+        'CREATE TABLE orders (id TEXT NOT NULL PRIMARY KEY, order_code TEXT NOT NULL);',
+      );
+      seed.execute('PRAGMA user_version = 8;');
+      seed.dispose();
+
+      final migrated = AppDatabase.forTesting(NativeDatabase(file));
+      final cols =
+          await migrated.customSelect("PRAGMA table_info('orders')").get();
+      expect(
+        cols.map((r) => r.read<String>('name')),
+        contains('expected_collection_at'),
+        reason: 'the from < 9 branch should add the collection-date column',
+      );
       await migrated.close();
     } finally {
       await tempDir.delete(recursive: true);
