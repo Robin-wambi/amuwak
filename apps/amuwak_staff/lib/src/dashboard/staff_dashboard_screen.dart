@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../auth/mfa_enrolment_screen.dart';
 import '../auth/sign_out_provider.dart';
+import 'business_glance.dart';
 import '../customers/customer_form_screen.dart';
 import '../customers/customer_import_screen.dart';
 import '../customers/customers_list_screen.dart';
@@ -29,6 +30,7 @@ import '../orders/edit_order_screen.dart';
 import '../orders/order_details_screen.dart';
 import '../orders/order_filter.dart';
 import '../orders/order_filter_screen.dart';
+import '../orders/order_list_extensions.dart';
 import '../orders/order_search_screen.dart';
 import '../orders/widgets/order_card_list.dart';
 import '../orders/proof/barcode_reader.dart';
@@ -1001,6 +1003,11 @@ class _HomeTab extends StatelessWidget {
       children: [
         reveal(_DashboardHeader(orders: orders)),
         const SizedBox(height: AppSpacing.xl),
+        // Today's headline numbers, alongside the summary grid once data lands.
+        if (!loading) ...[
+          reveal(const _BusinessAtAGlance()),
+          const SizedBox(height: AppSpacing.xl),
+        ],
         reveal(middle),
         const SizedBox(height: AppSpacing.xxl),
         reveal(_QuickActions(
@@ -1013,7 +1020,7 @@ class _HomeTab extends StatelessWidget {
   }
 }
 
-class _OrdersBody extends StatelessWidget {
+class _OrdersBody extends StatefulWidget {
   const _OrdersBody({
     required this.orders,
     required this.onOrderTap,
@@ -1029,7 +1036,35 @@ class _OrdersBody extends StatelessWidget {
   final void Function(LaundryOrder) onAdvanceOrderStatus;
 
   @override
+  State<_OrdersBody> createState() => _OrdersBodyState();
+}
+
+class _OrdersBodyState extends State<_OrdersBody> {
+  final _searchController = TextEditingController();
+  OrderFilter _filter = OrderFilter.all;
+  String _query = '';
+
+  // The status filters shown as chips — the same subsets as the Home summary
+  // cards, so a chip count can never disagree with a card count.
+  static const _filters = [
+    OrderFilter.all,
+    OrderFilter.pendingPickup,
+    OrderFilter.inProgress,
+    OrderFilter.readyForDelivery,
+    OrderFilter.completedToday,
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Status chip narrows first, then the text query — same OrderFilter/searchBy
+    // helpers the summary cards and search screen use.
+    final visible = _filter.apply(widget.orders).searchBy(_query);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1038,20 +1073,47 @@ class _OrdersBody extends StatelessWidget {
             AppSpacing.xl,
             AppSpacing.sm,
             AppSpacing.xl,
-            AppSpacing.md,
+            AppSpacing.sm,
           ),
-          child: Text(
-            'Assigned orders',
-            style: Theme.of(context).textTheme.titleLarge,
+          child: TextField(
+            key: const Key('orders_search'),
+            controller: _searchController,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search orders by name, code or phone',
+              border: OutlineInputBorder(),
+            ),
           ),
         ),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            itemCount: _filters.length,
+            separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+            itemBuilder: (context, i) {
+              final f = _filters[i];
+              return Center(
+                child: FilterChip(
+                  key: Key('orders_chip_${f.name}'),
+                  label: Text('${f.label} (${f.count(widget.orders)})'),
+                  selected: _filter == f,
+                  onSelected: (_) => setState(() => _filter = f),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Expanded(
           child: OrderCardList(
-            orders: orders,
-            onOrderTap: onOrderTap,
-            onEditOrder: onEditOrder,
-            onDeleteOrder: onDeleteOrder,
-            onAdvanceOrderStatus: onAdvanceOrderStatus,
+            orders: visible,
+            onOrderTap: widget.onOrderTap,
+            onEditOrder: widget.onEditOrder,
+            onDeleteOrder: widget.onDeleteOrder,
+            onAdvanceOrderStatus: widget.onAdvanceOrderStatus,
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.xl,
               0,
@@ -1541,6 +1603,99 @@ class _SummaryCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Home "Business at a glance": today's collected revenue + customers added
+/// today. A [ConsumerWidget] so it self-watches the orders + customers streams
+/// (Riverpod dedups the orders watch the shell already holds).
+class _BusinessAtAGlance extends ConsumerWidget {
+  const _BusinessAtAGlance();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orders =
+        ref.watch(ordersStreamProvider).valueOrNull ?? const <LaundryOrder>[];
+    final customers =
+        ref.watch(customersStreamProvider).valueOrNull ?? const <Customer>[];
+    final glance =
+        BusinessGlance.forToday(orders, customers, now: DateTime.now());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Business at a glance',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.md),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _GlanceTile(
+                  key: const Key('glance_revenue'),
+                  icon: Icons.payments_outlined,
+                  value: formatUgx(glance.revenueUgx),
+                  title: "Today's revenue",
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: _GlanceTile(
+                  key: const Key('glance_new_customers'),
+                  icon: Icons.person_add_alt_1_outlined,
+                  value: '${glance.newCustomers}',
+                  title: 'New customers',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GlanceTile extends StatelessWidget {
+  const _GlanceTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.title,
+  });
+
+  final IconData icon;
+  final String value;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(icon, color: colorScheme.primary),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            value,
+            style: textTheme.titleLarge,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(title, style: textTheme.bodySmall),
+        ],
       ),
     );
   }

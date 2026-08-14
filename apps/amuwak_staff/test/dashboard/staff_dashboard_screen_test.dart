@@ -385,6 +385,97 @@ void main() {
     expect(find.widgetWithText(AppBar, 'Daily report'), findsOneWidget);
   });
 
+  testWidgets('Home: Business at a glance renders once orders load',
+      (tester) async {
+    await pumpDashboardWithDb(tester);
+
+    expect(find.text('Business at a glance'), findsOneWidget);
+    expect(find.byKey(const Key('glance_revenue')), findsOneWidget);
+    expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
+  });
+
+  testWidgets('Orders tab: a status chip filters the list', (tester) async {
+    const pending = LaundryOrder(
+      orderId: 'P1',
+      orderCode: 'P1',
+      customerName: 'Pending Cust',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    const inProgress = LaundryOrder(
+      orderId: 'I1',
+      orderCode: 'I1',
+      customerName: 'Progress Cust',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.inProgress,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      ordersStreamProvider.overrideWith(
+          (ref) => Stream<List<LaundryOrder>>.value(const [pending, inProgress])),
+    ]);
+
+    await tapNavTab(tester, 'Orders');
+    // Both show under the default 'All' chip.
+    expect(find.text('Pending Cust'), findsOneWidget);
+    expect(find.text('Progress Cust'), findsOneWidget);
+
+    await tester.ensureVisible(
+        find.byKey(const Key('orders_chip_pendingPickup')));
+    await tester.tap(find.byKey(const Key('orders_chip_pendingPickup')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pending Cust'), findsOneWidget);
+    expect(find.text('Progress Cust'), findsNothing);
+  });
+
+  testWidgets('Orders tab: the search box filters the list', (tester) async {
+    const ada = LaundryOrder(
+      orderId: 'A1',
+      orderCode: 'A1',
+      customerName: 'Ada Lovelace',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    const grace = LaundryOrder(
+      orderId: 'G1',
+      orderCode: 'G1',
+      customerName: 'Grace Hopper',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      ordersStreamProvider.overrideWith(
+          (ref) => Stream<List<LaundryOrder>>.value(const [ada, grace])),
+    ]);
+
+    await tapNavTab(tester, 'Orders');
+    await tester.enterText(find.byKey(const Key('orders_search')), 'grace');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Grace Hopper'), findsOneWidget);
+    expect(find.text('Ada Lovelace'), findsNothing);
+  });
+
   testWidgets(
     'Tapping the bell opens NotificationsScreen',
     (tester) async {
