@@ -23,7 +23,11 @@ enum OrderFilter {
   completed,
 
   /// Every order not yet completed — the daily report's "Pending work" card.
-  pendingWork;
+  pendingWork,
+
+  /// Not-yet-completed orders whose promised collection day (migration 0058) is
+  /// already past — the "Overdue" view.
+  overdue;
 
   String get label => switch (this) {
         OrderFilter.all => 'Assigned',
@@ -33,6 +37,7 @@ enum OrderFilter {
         OrderFilter.completedToday => 'Completed today',
         OrderFilter.completed => 'Completed',
         OrderFilter.pendingWork => 'Pending work',
+        OrderFilter.overdue => 'Overdue',
       };
 
   /// Completed work (both [completedToday] and [completed]) reads best
@@ -49,6 +54,7 @@ enum OrderFilter {
         OrderFilter.completedToday => _isCompletedToday(o, now),
         OrderFilter.completed => o.status == OrderStatus.completed,
         OrderFilter.pendingWork => o.status != OrderStatus.completed,
+        OrderFilter.overdue => _isOverdue(o, now),
       };
 
   List<LaundryOrder> apply(
@@ -82,5 +88,20 @@ enum OrderFilter {
     return deliveredLocal.year == today.year &&
         deliveredLocal.month == today.month &&
         deliveredLocal.day == today.day;
+  }
+
+  /// A not-yet-completed order whose promised collection day is strictly before
+  /// today — a due-today order is "due", not yet "overdue". Compares LOCAL
+  /// calendar days like [_isCompletedToday], since `expected_collection_at` can
+  /// arrive from Supabase as UTC.
+  static bool _isOverdue(LaundryOrder o, DateTime now) {
+    if (o.status == OrderStatus.completed) return false;
+    final due = o.expectedCollectionAt;
+    if (due == null) return false;
+    final dueLocal = due.toLocal();
+    final t = now.toLocal();
+    final dueDay = DateTime(dueLocal.year, dueLocal.month, dueLocal.day);
+    final today = DateTime(t.year, t.month, t.day);
+    return dueDay.isBefore(today);
   }
 }

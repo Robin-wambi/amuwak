@@ -10,6 +10,7 @@ LaundryOrder _order(
   OrderStatus status, {
   String id = 'X',
   DateTime? deliveredAt,
+  DateTime? expectedCollectionAt,
 }) {
   return LaundryOrder(
     orderId: id,
@@ -21,6 +22,7 @@ LaundryOrder _order(
     phone: 'p',
     address: 'a',
     notes: '',
+    expectedCollectionAt: expectedCollectionAt,
     proofEvents: deliveredAt == null
         ? const []
         : [
@@ -185,6 +187,39 @@ void main() {
     test('label and newestFirst', () {
       expect(OrderFilter.pendingWork.label, 'Pending work');
       expect(OrderFilter.pendingWork.newestFirst, isFalse);
+    });
+  });
+
+  group('OrderFilter.overdue', () {
+    // now() = 11 Jun 2026, 10am.
+    test('matches a not-completed order whose collection day is before today',
+        () {
+      final o = _order(OrderStatus.inProgress,
+          expectedCollectionAt: DateTime(2026, 6, 10));
+      expect(OrderFilter.overdue.matches(o, now: now()), isTrue);
+    });
+
+    test('excludes an order due today (due, not yet overdue)', () {
+      final o = _order(OrderStatus.inProgress,
+          expectedCollectionAt: DateTime(2026, 6, 11));
+      expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
+    });
+
+    test('excludes a completed order even if its collection day has passed', () {
+      final o = _order(OrderStatus.completed,
+          deliveredAt: DateTime(2026, 6, 11, 9),
+          expectedCollectionAt: DateTime(2026, 6, 9));
+      expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
+    });
+
+    test('excludes an order with no expected collection date', () {
+      final o = _order(OrderStatus.inProgress);
+      expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
+    });
+
+    test('label and newestFirst', () {
+      expect(OrderFilter.overdue.label, 'Overdue');
+      expect(OrderFilter.overdue.newestFirst, isFalse);
     });
   });
 }
