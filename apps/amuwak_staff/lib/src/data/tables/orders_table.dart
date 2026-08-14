@@ -14,6 +14,9 @@ class Orders extends Table {
   IntColumn      get itemCount          => integer().named('item_count')();
   TextColumn     get notes              => text().withDefault(const Constant(''))();
   DateTimeColumn get scheduledFor       => dateTime().named('scheduled_for').nullable()();
+  // The promised ready-for-collection date (Supabase migration 0058). Nullable:
+  // rider intake may leave it unset. Distinct from scheduled_for (pickup time).
+  DateTimeColumn get expectedCollectionAt => dateTime().named('expected_collection_at').nullable()();
   TextColumn     get assignedDriver     => text().named('assigned_driver').nullable()();
   TextColumn     get intakeRecordedBy   => text().named('intake_recorded_by')();
   TextColumn     get createdBy          => text().named('created_by')();

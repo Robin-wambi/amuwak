@@ -34,6 +34,8 @@ Map<String, dynamic> orderUpsertPayload(
       'item_count': order.itemCount,
       'notes': order.notes,
       'scheduled_for': order.scheduledFor?.toUtc().toIso8601String(),
+      'expected_collection_at':
+          order.expectedCollectionAt?.toUtc().toIso8601String(),
       'rate_per_kg_snapshot_ugx': order.ratePerKgSnapshotUgx,
       'estimated_weight_kg': order.estimatedWeightKg,
       'final_weight_kg': order.finalWeightKg,
@@ -99,6 +101,8 @@ Map<String, dynamic> orderDetailsUpdatePayload(
       'item_count': order.itemCount,
       'notes': order.notes,
       'scheduled_for': order.scheduledFor?.toUtc().toIso8601String(),
+      'expected_collection_at':
+          order.expectedCollectionAt?.toUtc().toIso8601String(),
       'updated_by': actorStaffId,
       'updated_at': now.toUtc().toIso8601String(),
     };

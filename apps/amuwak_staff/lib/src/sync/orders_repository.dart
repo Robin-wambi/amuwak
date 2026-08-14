@@ -266,6 +266,7 @@ class OrdersRepository {
             itemCount: Value(order.itemCount),
             notes: Value(order.notes),
             scheduledFor: Value(order.scheduledFor),
+            expectedCollectionAt: Value(order.expectedCollectionAt),
             updatedBy: Value(actorStaffId),
             updatedAt: Value(now),
           ));
@@ -418,6 +419,7 @@ class OrdersRepository {
       itemCount: Value(order.itemCount),
       notes: Value(order.notes),
       scheduledFor: Value(order.scheduledFor),
+      expectedCollectionAt: Value(order.expectedCollectionAt),
       intakeRecordedBy: Value(actorStaffId),
       createdBy: Value(actorStaffId),
       createdAt: Value(now),

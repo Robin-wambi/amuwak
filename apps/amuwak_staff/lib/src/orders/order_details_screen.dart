@@ -517,6 +517,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                             label: 'Time',
                             value: _order.timeLabel,
                           ),
+                          if (_order.expectedCollectionAt != null)
+                            _DetailRow(
+                              icon: Icons.event_available_outlined,
+                              label: 'Ready by',
+                              value: LaundryOrder.formatDay(
+                                  _order.expectedCollectionAt!),
+                            ),
                         ],
                       ),
                       // The customer's own itemized list + damage photos, above

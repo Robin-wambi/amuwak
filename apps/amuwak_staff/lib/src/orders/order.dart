@@ -41,6 +41,7 @@ extension LaundryOrderDriftX on LaundryOrder {
       intakeMethod: row.intakeMethod,
       fulfillmentMethod: row.fulfillmentMethod,
       scheduledFor: row.scheduledFor,
+      expectedCollectionAt: row.expectedCollectionAt,
       proofEvents: events
           .map((e) => ProofEvent(
                 id: e.id,

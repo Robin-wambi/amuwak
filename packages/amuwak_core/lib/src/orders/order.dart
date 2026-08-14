@@ -20,6 +20,7 @@ class LaundryOrder {
     this.intakeMethod = 'driver_pickup',
     this.fulfillmentMethod = 'delivery',
     this.scheduledFor,
+    this.expectedCollectionAt,
     this.proofEvents = const [],
     this.ratePerKgSnapshotUgx = 0,
     this.estimatedWeightKg,
@@ -49,6 +50,11 @@ class LaundryOrder {
   final String intakeMethod;
   final String fulfillmentMethod;
   final DateTime? scheduledFor;
+
+  /// The date staff promised the order would be ready for collection/delivery.
+  /// Nullable: rider intake may leave it unset. Distinct from [scheduledFor]
+  /// (the promised *pickup* time). See Supabase migration 0058.
+  final DateTime? expectedCollectionAt;
   final List<ProofEvent> proofEvents;
   final double ratePerKgSnapshotUgx;
   final double? estimatedWeightKg;
@@ -150,6 +156,9 @@ class LaundryOrder {
     final scheduledFor = row['scheduled_for'] == null
         ? null
         : DateTime.parse(row['scheduled_for'] as String);
+    final expectedCollectionAt = row['expected_collection_at'] == null
+        ? null
+        : DateTime.parse(row['expected_collection_at'] as String);
     return LaundryOrder(
       orderId: row['id'] as String,
       orderCode: _blankToNull(row['order_code'] as String?),
@@ -167,6 +176,7 @@ class LaundryOrder {
       intakeMethod: (row['intake_method'] as String?) ?? 'driver_pickup',
       fulfillmentMethod: (row['fulfillment_method'] as String?) ?? 'delivery',
       scheduledFor: scheduledFor,
+      expectedCollectionAt: expectedCollectionAt,
       proofEvents: proofRows
           .where((e) => e['deleted_at'] == null)
           .map((e) => ProofEvent(
@@ -296,8 +306,10 @@ class LaundryOrder {
     String? intakeMethod,
     String? fulfillmentMethod,
     DateTime? scheduledFor,
+    DateTime? expectedCollectionAt,
     bool clearCustomerId = false,
     bool clearScheduledFor = false,
+    bool clearExpectedCollectionAt = false,
     List<ProofEvent>? proofEvents,
     double? ratePerKgSnapshotUgx,
     double? estimatedWeightKg,
@@ -330,6 +342,9 @@ class LaundryOrder {
       fulfillmentMethod: fulfillmentMethod ?? this.fulfillmentMethod,
       scheduledFor:
           clearScheduledFor ? null : (scheduledFor ?? this.scheduledFor),
+      expectedCollectionAt: clearExpectedCollectionAt
+          ? null
+          : (expectedCollectionAt ?? this.expectedCollectionAt),
       proofEvents: proofEvents ?? this.proofEvents,
       ratePerKgSnapshotUgx: ratePerKgSnapshotUgx ?? this.ratePerKgSnapshotUgx,
       estimatedWeightKg: clearEstimatedWeight
@@ -369,6 +384,7 @@ class LaundryOrder {
         other.intakeMethod != intakeMethod ||
         other.fulfillmentMethod != fulfillmentMethod ||
         other.scheduledFor != scheduledFor ||
+        other.expectedCollectionAt != expectedCollectionAt ||
         other.ratePerKgSnapshotUgx != ratePerKgSnapshotUgx ||
         other.estimatedWeightKg != estimatedWeightKg ||
         other.finalWeightKg != finalWeightKg ||
@@ -412,6 +428,7 @@ class LaundryOrder {
         intakeMethod,
         fulfillmentMethod,
         scheduledFor,
+        expectedCollectionAt,
         Object.hashAll(proofEvents),
         // Pricing fields grouped into a nested hash to stay within Object.hash's
         // 20-argument limit.
