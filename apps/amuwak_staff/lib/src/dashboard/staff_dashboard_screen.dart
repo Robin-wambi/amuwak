@@ -1,12 +1,19 @@
+import 'dart:convert' as convert;
 import 'dart:developer' as developer;
 
 import 'package:amuwak_core/amuwak_core.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../auth/mfa_enrolment_screen.dart';
 import '../auth/sign_out_provider.dart';
+import '../customers/customer_form_screen.dart';
+import '../customers/customer_import_screen.dart';
+import '../customers/customers_list_screen.dart';
+import '../data/app_database.dart' show Customer;
+import '../expenses/expenses_list_screen.dart';
 import 'current_staff_provider.dart';
 import 'dashboard_header_content.dart';
 import '../notifications/notification_summary.dart';
@@ -561,6 +568,115 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     );
   }
 
+  /// Soft-deletes an expense from the Expenses tab after a confirm. The stream
+  /// re-emits and the row drops off; a failure surfaces a retry SnackBar.
+  Future<void> _deleteExpense(Expense expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete expense?'),
+        content: Text(
+            '${expense.category.label} — ${formatUgx(expense.amountUgx)}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(expensesRepositoryProvider).softDelete(expense.id);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete — please retry.')),
+      );
+    }
+  }
+
+  /// Opens the standalone Daily Report. It lost its bottom-nav tab to Expenses,
+  /// so it's reached from the Home "Report" quick action and the Account tab.
+  /// A [Consumer] keeps it live off the orders/expenses streams.
+  void _openReport() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Daily report',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          body: Consumer(
+            builder: (context, ref, _) => DailyReportView(
+              orders: ref.watch(ordersStreamProvider).valueOrNull ??
+                  const <LaundryOrder>[],
+              expenses: ref.watch(expensesStreamProvider).valueOrNull ??
+                  const <Expense>[],
+              onOpenFiltered: _openFilteredOrders,
+              onOpenItems: _openItemsBreakdown,
+              onAddExpense: _openAddExpense,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Opens the add/edit customer form. Prefetches the customer list so the form
+  /// can reject a phone that duplicates an existing record. [existing] edits.
+  Future<void> _openCustomerForm({Customer? existing}) async {
+    final repo = ref.read(customersRepositoryProvider);
+    var existingCustomers = const <Customer>[];
+    try {
+      existingCustomers = await repo.getAll();
+    } catch (_) {
+      // Dedup is best-effort; proceed with none if the fetch fails.
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CustomerFormScreen(
+          save: repo.upsertCustomer,
+          existing: existing,
+          existingCustomers: existingCustomers,
+        ),
+      ),
+    );
+  }
+
+  /// Opens the CSV bulk-import flow, wiring the real file picker + repository.
+  Future<void> _openCustomerImport() async {
+    final repo = ref.read(customersRepositoryProvider);
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CustomerImportScreen(
+          pickCsvText: _pickCsvText,
+          loadExisting: repo.getAll,
+          importCustomers: repo.importCustomers,
+        ),
+      ),
+    );
+  }
+
+  /// Prompts for a CSV file and returns its UTF-8 text (null if cancelled).
+  /// `withData` so the bytes arrive without a filesystem path (web-safe).
+  Future<String?> _pickCsvText() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['csv'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final bytes = result.files.first.bytes;
+    if (bytes == null) return null;
+    return convert.utf8.decode(bytes, allowMalformed: true);
+  }
+
   void _openOrderSearch() {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -629,8 +745,10 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
       case 1:
         return 'Orders';
       case 2:
-        return 'Daily report';
+        return 'Expenses';
       case 3:
+        return 'Customers';
+      case 4:
         return 'Account';
       default:
         return 'Amuwak Staff';
@@ -640,6 +758,10 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final ordersAsync = ref.watch(ordersStreamProvider);
+    // Customer create/import/edit is gated to the roles RLS lets write the
+    // customers table (in_shop, manager); a rider can still browse the list.
+    final canManageCustomers =
+        const {'in_shop', 'manager'}.contains(ref.watch(currentRoleProvider));
     // Badge count only: pendingPickupCount keeps the "new pickup" predicate in
     // one place (shared with the summary) while skipping the summary's sort on
     // every dashboard rebuild (e.g. tab switches).
@@ -689,28 +811,29 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
                 onRetry: () => ref.invalidate(ordersStreamProvider),
               ),
             ),
-          2 => ordersAsync.when(
-              // Expenses are only needed on this tab — watch them here so the
-              // other tabs (and tests that never open the report) don't build
-              // the expenses stream. Degrade to empty while loading/errored so a
-              // hiccup never blanks the report; Net just reads as earned revenue.
-              data: (orders) => DailyReportView(
-                orders: orders,
-                expenses: ref.watch(expensesStreamProvider).valueOrNull ??
-                    const <Expense>[],
-                onOpenFiltered: _openFilteredOrders,
-                onOpenItems: _openItemsBreakdown,
-                onAddExpense: _openAddExpense,
-                // TODO(v2): pass onOpenExpenses once an expenses list screen
-                // exists — until then the Expenses card has no tap target.
-              ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => _ErrorRetry(
-                onRetry: () => ref.invalidate(ordersStreamProvider),
-              ),
+          // Expenses tab: the ledger list. Degrade to empty while the stream
+          // loads/errors so a hiccup never blanks the tab.
+          2 => ExpensesListView(
+              expenses: ref.watch(expensesStreamProvider).valueOrNull ??
+                  const <Expense>[],
+              onAddExpense: _openAddExpense,
+              onDelete: _deleteExpense,
             ),
-          3 => _AccountTab(
+          // Customers tab: browse + search; Add / Import / tap-to-edit are gated
+          // to the roles RLS lets write the customers table.
+          3 => CustomersListView(
+              customers: ref.watch(customersStreamProvider).valueOrNull ??
+                  const <Customer>[],
+              onAddCustomer: _openCustomerForm,
+              onImport: _openCustomerImport,
+              onCustomerTap: canManageCustomers
+                  ? (customer) => _openCustomerForm(existing: customer)
+                  : null,
+              canManage: canManageCustomers,
+            ),
+          4 => _AccountTab(
               onSignOut: _onSignOutPressed,
+              onOpenReport: _openReport,
               onOpenPricingSettings: _openPricingSettings,
               onInviteStaff: _openInviteStaff,
               onOpenStaff: _openStaffList,
@@ -740,20 +863,27 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
                   orders: ordersAsync.valueOrNull,
                   onOpenFiltered: _openFilteredOrders,
                   onNewPickup: _handleNewPickup,
-                  onShowReport: () => _selectTab(2),
+                  onShowReport: _openReport,
                   onCheckOrder: _openOrderSearch,
                 ),
         },
       ),
-      // A create entry point on the Orders tab (Home already has the "New
-      // pickup" quick action). Reuses the same flow, so there's one create path.
-      floatingActionButton: _selectedTabIndex == 1
-          ? FloatingActionButton.extended(
-              onPressed: _handleNewPickup,
-              icon: const Icon(Icons.add),
-              label: const Text('New pickup'),
-            )
-          : null,
+      // Per-tab create action. Orders → New pickup (Home also has that quick
+      // action); Expenses → Record expense (the list itself has no add control
+      // once populated). Customers add via the list's own Add/Import buttons.
+      floatingActionButton: switch (_selectedTabIndex) {
+        1 => FloatingActionButton.extended(
+            onPressed: _handleNewPickup,
+            icon: const Icon(Icons.add),
+            label: const Text('New pickup'),
+          ),
+        2 => FloatingActionButton.extended(
+            onPressed: _openAddExpense,
+            icon: const Icon(Icons.add),
+            label: const Text('Record expense'),
+          ),
+        _ => null,
+      },
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTabIndex,
         onDestinationSelected: _selectTab,
@@ -769,9 +899,14 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
             label: 'Orders',
           ),
           NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Report',
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long_rounded),
+            label: 'Expenses',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.people_outline_rounded),
+            selectedIcon: Icon(Icons.people_rounded),
+            label: 'Customers',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
@@ -933,6 +1068,7 @@ class _OrdersBody extends StatelessWidget {
 class _AccountTab extends StatelessWidget {
   const _AccountTab({
     required this.onSignOut,
+    required this.onOpenReport,
     required this.onOpenPricingSettings,
     required this.onInviteStaff,
     required this.onOpenStaff,
@@ -944,6 +1080,10 @@ class _AccountTab extends StatelessWidget {
   });
 
   final VoidCallback onSignOut;
+
+  /// Opens the Daily Report, which moved off the bottom nav to make room for
+  /// the Expenses and Customers tabs.
+  final VoidCallback onOpenReport;
   final VoidCallback onOpenPricingSettings;
   final VoidCallback onInviteStaff;
 
@@ -1028,6 +1168,18 @@ class _AccountTab extends StatelessWidget {
           icon: Icons.schedule_outlined,
           label: 'Shift',
           value: 'Today',
+        ),
+        const SizedBox(height: AppSpacing.lg2),
+        AppCard(
+          onTap: onOpenReport,
+          child: Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, color: colorScheme.primary),
+              const SizedBox(width: AppSpacing.md),
+              const Expanded(child: Text('Reports')),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.lg2),
         if (canManagePricing) ...[
