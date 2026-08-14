@@ -11,6 +11,12 @@ import 'supabase_payloads.dart';
 typedef CustomerUpsert =
     Future<List<Map<String, dynamic>>> Function(Map<String, dynamic> values);
 
+/// Test seam for the bulk import upsert: given the list of column maps, returns
+/// the "selected" rows written. Lets unit tests drive
+/// [CustomersRepository.importCustomers] without a live SupabaseClient.
+typedef CustomerBulkUpsert = Future<List<Map<String, dynamic>>> Function(
+    List<Map<String, dynamic>> values);
+
 /// Read + write repository for customers — ONLINE-ONLY mode.
 ///
 /// Reads stream live from Supabase; writes upsert directly. The offline-first
@@ -23,7 +29,8 @@ class CustomersRepository {
     DateTime Function()? clock,
   })  : _supabase = supabase,
         _clock = clock ?? DateTime.now,
-        _upsertOverride = null;
+        _upsertOverride = null,
+        _bulkUpsertOverride = null;
 
   /// Test seam: inject the raw `upsert(...).select('id')` so unit tests can
   /// drive [upsertCustomer] (payload shape + no-write [StateError]) without
@@ -32,13 +39,16 @@ class CustomersRepository {
   CustomersRepository.forTest({
     required DateTime Function() clock,
     CustomerUpsert? upsertRow,
+    CustomerBulkUpsert? bulkUpsertRows,
   })  : _supabase = null,
         _clock = clock,
-        _upsertOverride = upsertRow;
+        _upsertOverride = upsertRow,
+        _bulkUpsertOverride = bulkUpsertRows;
 
   final SupabaseClient? _supabase;
   final DateTime Function() _clock;
   final CustomerUpsert? _upsertOverride;
+  final CustomerBulkUpsert? _bulkUpsertOverride;
 
   Stream<List<Customer>> watchAll() {
     assert(_supabase != null,
@@ -109,6 +119,32 @@ class CustomersRepository {
       throw StateError(
           'upsertCustomer: write did not persist customer "${customer.id}"');
     }
+  }
+
+  /// Dispatches the bulk import upsert, routing through the test override when
+  /// constructed via [CustomersRepository.forTest], else the live client.
+  Future<List<Map<String, dynamic>>> _bulkUpsertRow(
+      List<Map<String, dynamic>> values) async {
+    final override = _bulkUpsertOverride;
+    if (override != null) return override(values);
+    assert(_supabase != null,
+        'forTest instance has no bulkUpsertRows — '
+        'pass one to CustomersRepository.forTest(bulkUpsertRows: ...)');
+    return _supabase!.from('customers').upsert(values).select('id');
+  }
+
+  /// Upserts many customers in a single request (bulk import). Returns the count
+  /// of rows the server confirmed writing — fewer than [customers] means some
+  /// were dropped (e.g. by RLS), so the caller can surface a partial result.
+  /// An empty list is a no-op (no request).
+  Future<int> importCustomers(List<Customer> customers) async {
+    if (customers.isEmpty) return 0;
+    final now = _clock();
+    final payloads = [
+      for (final c in customers) customerUpsertPayload(c, now: now),
+    ];
+    final written = await _bulkUpsertRow(payloads);
+    return written.length;
   }
 }
 
