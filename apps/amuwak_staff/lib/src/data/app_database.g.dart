@@ -1330,6 +1330,17 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _expectedCollectionAtMeta =
+      const VerificationMeta('expectedCollectionAt');
+  @override
+  late final GeneratedColumn<DateTime> expectedCollectionAt =
+      GeneratedColumn<DateTime>(
+        'expected_collection_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _assignedDriverMeta = const VerificationMeta(
     'assignedDriver',
   );
@@ -1578,6 +1589,7 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
     itemCount,
     notes,
     scheduledFor,
+    expectedCollectionAt,
     assignedDriver,
     intakeRecordedBy,
     createdBy,
@@ -1718,6 +1730,15 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
         scheduledFor.isAcceptableOrUnknown(
           data['scheduled_for']!,
           _scheduledForMeta,
+        ),
+      );
+    }
+    if (data.containsKey('expected_collection_at')) {
+      context.handle(
+        _expectedCollectionAtMeta,
+        expectedCollectionAt.isAcceptableOrUnknown(
+          data['expected_collection_at']!,
+          _expectedCollectionAtMeta,
         ),
       );
     }
@@ -1936,6 +1957,10 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}scheduled_for'],
       ),
+      expectedCollectionAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expected_collection_at'],
+      ),
       assignedDriver: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}assigned_driver'],
@@ -2039,6 +2064,7 @@ class Order extends DataClass implements Insertable<Order> {
   final int itemCount;
   final String notes;
   final DateTime? scheduledFor;
+  final DateTime? expectedCollectionAt;
   final String? assignedDriver;
   final String intakeRecordedBy;
   final String createdBy;
@@ -2073,6 +2099,7 @@ class Order extends DataClass implements Insertable<Order> {
     required this.itemCount,
     required this.notes,
     this.scheduledFor,
+    this.expectedCollectionAt,
     this.assignedDriver,
     required this.intakeRecordedBy,
     required this.createdBy,
@@ -2113,6 +2140,9 @@ class Order extends DataClass implements Insertable<Order> {
     map['notes'] = Variable<String>(notes);
     if (!nullToAbsent || scheduledFor != null) {
       map['scheduled_for'] = Variable<DateTime>(scheduledFor);
+    }
+    if (!nullToAbsent || expectedCollectionAt != null) {
+      map['expected_collection_at'] = Variable<DateTime>(expectedCollectionAt);
     }
     if (!nullToAbsent || assignedDriver != null) {
       map['assigned_driver'] = Variable<String>(assignedDriver);
@@ -2168,6 +2198,9 @@ class Order extends DataClass implements Insertable<Order> {
       scheduledFor: scheduledFor == null && nullToAbsent
           ? const Value.absent()
           : Value(scheduledFor),
+      expectedCollectionAt: expectedCollectionAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expectedCollectionAt),
       assignedDriver: assignedDriver == null && nullToAbsent
           ? const Value.absent()
           : Value(assignedDriver),
@@ -2222,6 +2255,9 @@ class Order extends DataClass implements Insertable<Order> {
       itemCount: serializer.fromJson<int>(json['itemCount']),
       notes: serializer.fromJson<String>(json['notes']),
       scheduledFor: serializer.fromJson<DateTime?>(json['scheduledFor']),
+      expectedCollectionAt: serializer.fromJson<DateTime?>(
+        json['expectedCollectionAt'],
+      ),
       assignedDriver: serializer.fromJson<String?>(json['assignedDriver']),
       intakeRecordedBy: serializer.fromJson<String>(json['intakeRecordedBy']),
       createdBy: serializer.fromJson<String>(json['createdBy']),
@@ -2273,6 +2309,9 @@ class Order extends DataClass implements Insertable<Order> {
       'itemCount': serializer.toJson<int>(itemCount),
       'notes': serializer.toJson<String>(notes),
       'scheduledFor': serializer.toJson<DateTime?>(scheduledFor),
+      'expectedCollectionAt': serializer.toJson<DateTime?>(
+        expectedCollectionAt,
+      ),
       'assignedDriver': serializer.toJson<String?>(assignedDriver),
       'intakeRecordedBy': serializer.toJson<String>(intakeRecordedBy),
       'createdBy': serializer.toJson<String>(createdBy),
@@ -2310,6 +2349,7 @@ class Order extends DataClass implements Insertable<Order> {
     int? itemCount,
     String? notes,
     Value<DateTime?> scheduledFor = const Value.absent(),
+    Value<DateTime?> expectedCollectionAt = const Value.absent(),
     Value<String?> assignedDriver = const Value.absent(),
     String? intakeRecordedBy,
     String? createdBy,
@@ -2344,6 +2384,9 @@ class Order extends DataClass implements Insertable<Order> {
     itemCount: itemCount ?? this.itemCount,
     notes: notes ?? this.notes,
     scheduledFor: scheduledFor.present ? scheduledFor.value : this.scheduledFor,
+    expectedCollectionAt: expectedCollectionAt.present
+        ? expectedCollectionAt.value
+        : this.expectedCollectionAt,
     assignedDriver: assignedDriver.present
         ? assignedDriver.value
         : this.assignedDriver,
@@ -2400,6 +2443,9 @@ class Order extends DataClass implements Insertable<Order> {
       scheduledFor: data.scheduledFor.present
           ? data.scheduledFor.value
           : this.scheduledFor,
+      expectedCollectionAt: data.expectedCollectionAt.present
+          ? data.expectedCollectionAt.value
+          : this.expectedCollectionAt,
       assignedDriver: data.assignedDriver.present
           ? data.assignedDriver.value
           : this.assignedDriver,
@@ -2459,6 +2505,7 @@ class Order extends DataClass implements Insertable<Order> {
           ..write('itemCount: $itemCount, ')
           ..write('notes: $notes, ')
           ..write('scheduledFor: $scheduledFor, ')
+          ..write('expectedCollectionAt: $expectedCollectionAt, ')
           ..write('assignedDriver: $assignedDriver, ')
           ..write('intakeRecordedBy: $intakeRecordedBy, ')
           ..write('createdBy: $createdBy, ')
@@ -2498,6 +2545,7 @@ class Order extends DataClass implements Insertable<Order> {
     itemCount,
     notes,
     scheduledFor,
+    expectedCollectionAt,
     assignedDriver,
     intakeRecordedBy,
     createdBy,
@@ -2536,6 +2584,7 @@ class Order extends DataClass implements Insertable<Order> {
           other.itemCount == this.itemCount &&
           other.notes == this.notes &&
           other.scheduledFor == this.scheduledFor &&
+          other.expectedCollectionAt == this.expectedCollectionAt &&
           other.assignedDriver == this.assignedDriver &&
           other.intakeRecordedBy == this.intakeRecordedBy &&
           other.createdBy == this.createdBy &&
@@ -2572,6 +2621,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
   final Value<int> itemCount;
   final Value<String> notes;
   final Value<DateTime?> scheduledFor;
+  final Value<DateTime?> expectedCollectionAt;
   final Value<String?> assignedDriver;
   final Value<String> intakeRecordedBy;
   final Value<String> createdBy;
@@ -2607,6 +2657,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     this.itemCount = const Value.absent(),
     this.notes = const Value.absent(),
     this.scheduledFor = const Value.absent(),
+    this.expectedCollectionAt = const Value.absent(),
     this.assignedDriver = const Value.absent(),
     this.intakeRecordedBy = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -2643,6 +2694,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     required int itemCount,
     this.notes = const Value.absent(),
     this.scheduledFor = const Value.absent(),
+    this.expectedCollectionAt = const Value.absent(),
     this.assignedDriver = const Value.absent(),
     required String intakeRecordedBy,
     required String createdBy,
@@ -2690,6 +2742,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     Expression<int>? itemCount,
     Expression<String>? notes,
     Expression<DateTime>? scheduledFor,
+    Expression<DateTime>? expectedCollectionAt,
     Expression<String>? assignedDriver,
     Expression<String>? intakeRecordedBy,
     Expression<String>? createdBy,
@@ -2726,6 +2779,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
       if (itemCount != null) 'item_count': itemCount,
       if (notes != null) 'notes': notes,
       if (scheduledFor != null) 'scheduled_for': scheduledFor,
+      if (expectedCollectionAt != null)
+        'expected_collection_at': expectedCollectionAt,
       if (assignedDriver != null) 'assigned_driver': assignedDriver,
       if (intakeRecordedBy != null) 'intake_recorded_by': intakeRecordedBy,
       if (createdBy != null) 'created_by': createdBy,
@@ -2769,6 +2824,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     Value<int>? itemCount,
     Value<String>? notes,
     Value<DateTime?>? scheduledFor,
+    Value<DateTime?>? expectedCollectionAt,
     Value<String?>? assignedDriver,
     Value<String>? intakeRecordedBy,
     Value<String>? createdBy,
@@ -2805,6 +2861,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
       itemCount: itemCount ?? this.itemCount,
       notes: notes ?? this.notes,
       scheduledFor: scheduledFor ?? this.scheduledFor,
+      expectedCollectionAt: expectedCollectionAt ?? this.expectedCollectionAt,
       assignedDriver: assignedDriver ?? this.assignedDriver,
       intakeRecordedBy: intakeRecordedBy ?? this.intakeRecordedBy,
       createdBy: createdBy ?? this.createdBy,
@@ -2872,6 +2929,11 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     }
     if (scheduledFor.present) {
       map['scheduled_for'] = Variable<DateTime>(scheduledFor.value);
+    }
+    if (expectedCollectionAt.present) {
+      map['expected_collection_at'] = Variable<DateTime>(
+        expectedCollectionAt.value,
+      );
     }
     if (assignedDriver.present) {
       map['assigned_driver'] = Variable<String>(assignedDriver.value);
@@ -2961,6 +3023,7 @@ class OrdersCompanion extends UpdateCompanion<Order> {
           ..write('itemCount: $itemCount, ')
           ..write('notes: $notes, ')
           ..write('scheduledFor: $scheduledFor, ')
+          ..write('expectedCollectionAt: $expectedCollectionAt, ')
           ..write('assignedDriver: $assignedDriver, ')
           ..write('intakeRecordedBy: $intakeRecordedBy, ')
           ..write('createdBy: $createdBy, ')
@@ -8796,6 +8859,7 @@ typedef $$OrdersTableCreateCompanionBuilder =
       required int itemCount,
       Value<String> notes,
       Value<DateTime?> scheduledFor,
+      Value<DateTime?> expectedCollectionAt,
       Value<String?> assignedDriver,
       required String intakeRecordedBy,
       required String createdBy,
@@ -8833,6 +8897,7 @@ typedef $$OrdersTableUpdateCompanionBuilder =
       Value<int> itemCount,
       Value<String> notes,
       Value<DateTime?> scheduledFor,
+      Value<DateTime?> expectedCollectionAt,
       Value<String?> assignedDriver,
       Value<String> intakeRecordedBy,
       Value<String> createdBy,
@@ -8927,6 +8992,11 @@ class $$OrdersTableFilterComposer
 
   ColumnFilters<DateTime> get scheduledFor => $composableBuilder(
     column: $table.scheduledFor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expectedCollectionAt => $composableBuilder(
+    column: $table.expectedCollectionAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9105,6 +9175,11 @@ class $$OrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get expectedCollectionAt => $composableBuilder(
+    column: $table.expectedCollectionAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get assignedDriver => $composableBuilder(
     column: $table.assignedDriver,
     builder: (column) => ColumnOrderings(column),
@@ -9266,6 +9341,11 @@ class $$OrdersTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<DateTime> get expectedCollectionAt => $composableBuilder(
+    column: $table.expectedCollectionAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get assignedDriver => $composableBuilder(
     column: $table.assignedDriver,
     builder: (column) => column,
@@ -9388,6 +9468,7 @@ class $$OrdersTableTableManager
                 Value<int> itemCount = const Value.absent(),
                 Value<String> notes = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
+                Value<DateTime?> expectedCollectionAt = const Value.absent(),
                 Value<String?> assignedDriver = const Value.absent(),
                 Value<String> intakeRecordedBy = const Value.absent(),
                 Value<String> createdBy = const Value.absent(),
@@ -9423,6 +9504,7 @@ class $$OrdersTableTableManager
                 itemCount: itemCount,
                 notes: notes,
                 scheduledFor: scheduledFor,
+                expectedCollectionAt: expectedCollectionAt,
                 assignedDriver: assignedDriver,
                 intakeRecordedBy: intakeRecordedBy,
                 createdBy: createdBy,
@@ -9460,6 +9542,7 @@ class $$OrdersTableTableManager
                 required int itemCount,
                 Value<String> notes = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
+                Value<DateTime?> expectedCollectionAt = const Value.absent(),
                 Value<String?> assignedDriver = const Value.absent(),
                 required String intakeRecordedBy,
                 required String createdBy,
@@ -9495,6 +9578,7 @@ class $$OrdersTableTableManager
                 itemCount: itemCount,
                 notes: notes,
                 scheduledFor: scheduledFor,
+                expectedCollectionAt: expectedCollectionAt,
                 assignedDriver: assignedDriver,
                 intakeRecordedBy: intakeRecordedBy,
                 createdBy: createdBy,

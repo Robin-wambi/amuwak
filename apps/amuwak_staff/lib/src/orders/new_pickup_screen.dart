@@ -95,6 +95,9 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
   // Which quick-chip preset is currently selected, if any. Cleared when
   // _scheduledFor changes via a different path (e.g. Custom… picker).
   _ScheduleChip? _selectedChip;
+  // The promised ready-for-collection date (date-only; migration 0058). Set from
+  // the optional-details section, independent of the pickup schedule above.
+  DateTime? _expectedCollectionAt;
   bool _optionalExpanded = false;
   // Delivery is included by default (the common case); express is opt-in.
   bool _includeDelivery = true;
@@ -170,6 +173,21 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
       _scheduledFor = when;
       _selectedChip = chip;
     });
+  }
+
+  /// Date-only picker for the promised collection date (migration 0058). Bound
+  /// to today..+60 days; collection is a date, not a time, so no time picker.
+  Future<void> _pickExpectedCollectionDate() async {
+    final now = widget.clock();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expectedCollectionAt ?? today,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 60)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _expectedCollectionAt = picked);
   }
 
   Future<void> _pickCustomDateTime() async {
@@ -481,6 +499,7 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
       itemCount: _count,
       notes: _notesController.text.trim(),
       scheduledFor: scheduled,
+      expectedCollectionAt: _expectedCollectionAt,
       ratePerKgSnapshotUgx: customRate ?? _resolvedRate,
       // Freeze the pricing config in force now. When not express, the flat/pct
       // snapshots stay 0 (isExpress gates them anyway).
@@ -906,6 +925,28 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
                 subtitle: Text(_expressSubtitle),
                 value: _isExpress,
                 onChanged: (v) => setState(() => _isExpress = v),
+              ),
+              ListTile(
+                key: const Key('np_expected_collection'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.event_available_outlined),
+                title: const Text('Expected collection date'),
+                subtitle: Text(
+                  _expectedCollectionAt == null
+                      ? 'Not set'
+                      : LaundryOrder.formatDay(_expectedCollectionAt!,
+                          now: widget.clock),
+                ),
+                trailing: _expectedCollectionAt == null
+                    ? const Icon(Icons.chevron_right_rounded)
+                    : IconButton(
+                        key: const Key('np_expected_collection_clear'),
+                        tooltip: 'Clear expected collection date',
+                        icon: const Icon(Icons.close),
+                        onPressed: () =>
+                            setState(() => _expectedCollectionAt = null),
+                      ),
+                onTap: _pickExpectedCollectionDate,
               ),
             ],
             const SizedBox(height: 24),

@@ -180,4 +180,35 @@ void main() {
     expect(order.expressFlatSnapshotUgx, 2000);
     expect(order.expressPctSnapshot, 30);
   });
+
+  testWidgets('setting an expected collection date freezes it on the order',
+      (tester) async {
+    await pumpAndOpen(tester);
+    await fillRequiredFields(tester);
+
+    // Open the optional section and tap the collection-date field.
+    await tester.dragUntilVisible(
+      find.text('Add optional details'),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.tap(find.text('Add optional details'));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('np_expected_collection')),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.tap(find.byKey(const Key('np_expected_collection')));
+    await tester.pumpAndSettle();
+
+    // The date-only picker opens on today (the injected clock: 2026-05-25);
+    // confirming it selects that date.
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await submit(tester);
+
+    expect(capturedOrder().expectedCollectionAt, DateTime(2026, 5, 25));
+  });
 }

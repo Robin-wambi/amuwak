@@ -45,6 +45,7 @@ void main() {
       expect(p['item_count'], 5);
       expect(p['notes'], 'handle with care');
       expect(p['scheduled_for'], isNull);
+      expect(p['expected_collection_at'], isNull);
       expect(p['intake_recorded_by'], 's1');
       expect(p['created_by'], 's1');
       expect(p['created_at'], now.toUtc().toIso8601String());
@@ -67,6 +68,25 @@ void main() {
       final p =
           orderUpsertPayload(order, actorStaffId: 's1', now: DateTime(2026, 6, 2));
       expect(p['scheduled_for'], DateTime.utc(2026, 6, 3, 9).toIso8601String());
+    });
+
+    test('serialises expectedCollectionAt as a UTC ISO string when present', () {
+      final order = LaundryOrder(
+        orderId: 'o3',
+        customerName: 'Cid',
+        serviceType: ServiceType.washOnly,
+        status: OrderStatus.pendingPickup,
+        timeLabel: 't',
+        itemCount: 1,
+        phone: 'p',
+        address: 'a',
+        notes: '',
+        expectedCollectionAt: DateTime.utc(2026, 6, 5, 17),
+      );
+      final p = orderUpsertPayload(order,
+          actorStaffId: 's1', now: DateTime(2026, 6, 2));
+      expect(p['expected_collection_at'],
+          DateTime.utc(2026, 6, 5, 17).toIso8601String());
     });
   });
 
@@ -131,6 +151,7 @@ void main() {
           'item_count',
           'notes',
           'scheduled_for',
+          'expected_collection_at',
           'updated_by',
           'updated_at',
         ]),

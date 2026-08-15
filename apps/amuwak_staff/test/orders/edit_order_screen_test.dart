@@ -203,4 +203,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved!.scheduledFor, isNull);
   });
+
+  testWidgets('picking an expected collection date sets it on the saved order',
+      (tester) async {
+    LaundryOrder? saved;
+    await pumpTall(
+      tester,
+      EditOrderScreen(order: _order(), save: (o) async => saved = o),
+    );
+
+    await tester.tap(find.byKey(const Key('edit_pick_collection')));
+    await tester.pumpAndSettle();
+    // Date-only picker (no time step) — confirm its initial date.
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('edit_save')));
+    await tester.pumpAndSettle();
+
+    expect(saved!.expectedCollectionAt, isNotNull);
+  });
+
+  testWidgets(
+      'an existing collection date shows and can be cleared back to unset',
+      (tester) async {
+    LaundryOrder? saved;
+    final withDate =
+        _order().copyWith(expectedCollectionAt: DateTime(2026, 7, 5));
+    await pumpTall(
+      tester,
+      EditOrderScreen(order: withDate, save: (o) async => saved = o),
+    );
+
+    // The date label renders and the Clear affordance is offered.
+    expect(find.text(LaundryOrder.formatDay(withDate.expectedCollectionAt!)),
+        findsOneWidget);
+    final clear = find.byKey(const Key('edit_clear_collection'));
+    expect(clear, findsOneWidget);
+
+    await tester.tap(clear);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('edit_save')));
+    await tester.pumpAndSettle();
+    expect(saved!.expectedCollectionAt, isNull);
+  });
 }

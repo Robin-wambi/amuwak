@@ -10,6 +10,7 @@ LaundryOrder _order(
   OrderStatus status, {
   String id = 'X',
   DateTime? deliveredAt,
+  DateTime? expectedCollectionAt,
 }) {
   return LaundryOrder(
     orderId: id,
@@ -21,6 +22,7 @@ LaundryOrder _order(
     phone: 'p',
     address: 'a',
     notes: '',
+    expectedCollectionAt: expectedCollectionAt,
     proofEvents: deliveredAt == null
         ? const []
         : [
@@ -185,6 +187,57 @@ void main() {
     test('label and newestFirst', () {
       expect(OrderFilter.pendingWork.label, 'Pending work');
       expect(OrderFilter.pendingWork.newestFirst, isFalse);
+    });
+  });
+
+  group('OrderFilter.overdue', () {
+    // now() = 11 Jun 2026, 10am.
+    test('matches a not-completed order whose collection day is before today',
+        () {
+      final o = _order(OrderStatus.inProgress,
+          expectedCollectionAt: DateTime(2026, 6, 10));
+      expect(OrderFilter.overdue.matches(o, now: now()), isTrue);
+    });
+
+    test('excludes an order due today (due, not yet overdue)', () {
+      final o = _order(OrderStatus.inProgress,
+          expectedCollectionAt: DateTime(2026, 6, 11));
+      expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
+    });
+
+    test('excludes a completed order even if its collection day has passed', () {
+      final o = _order(OrderStatus.completed,
+          deliveredAt: DateTime(2026, 6, 11, 9),
+          expectedCollectionAt: DateTime(2026, 6, 9));
+      expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
+    });
+
+    test('excludes an order with no expected collection date', () {
+      final o = _order(OrderStatus.inProgress);
+      expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
+    });
+
+    test('classification is independent of UTC-vs-local expectedCollectionAt',
+        () {
+      // expected_collection_at arrives from Supabase as UTC; the same instant
+      // expressed as UTC vs local must classify identically. Without toLocal()
+      // these diverge for an instant whose UTC and local calendar days differ
+      // (the EAT 00:00–03:00 window) — this fails on any non-UTC machine if
+      // the normalization regresses, and never false-fails on a UTC machine.
+      final instantUtc = DateTime.utc(2026, 6, 10, 21, 30); // 00:30 EAT Jun 11
+      final asUtc =
+          _order(OrderStatus.inProgress, expectedCollectionAt: instantUtc);
+      final asLocal = _order(OrderStatus.inProgress,
+          expectedCollectionAt: instantUtc.toLocal());
+      expect(
+        OrderFilter.overdue.matches(asUtc, now: now()),
+        OrderFilter.overdue.matches(asLocal, now: now()),
+      );
+    });
+
+    test('label and newestFirst', () {
+      expect(OrderFilter.overdue.label, 'Overdue');
+      expect(OrderFilter.overdue.newestFirst, isFalse);
     });
   });
 }

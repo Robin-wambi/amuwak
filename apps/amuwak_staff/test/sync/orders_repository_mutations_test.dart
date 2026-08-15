@@ -107,6 +107,28 @@ void main() {
       expect((payload['p_order'] as Map)['service_type'], 'Wash & Iron');
     });
 
+    test('persists expectedCollectionAt to the local row and the rpc payload',
+        () async {
+      final when = DateTime.utc(2026, 6, 30, 12);
+      await repo.createPickup(
+        order(id: 'o2').copyWith(expectedCollectionAt: when),
+        customer(id: 'c2'),
+        actorStaffId: 's1',
+      );
+
+      // Local Drift round-trip: the companion wrote it, the row reads it back.
+      final row = await (db.select(db.orders)..where((t) => t.id.equals('o2')))
+          .getSingle();
+      expect(row.expectedCollectionAt, when);
+
+      // The queued create_pickup payload carries it for the server INSERT.
+      final payload =
+          jsonDecode((await outbox.peekPending(limit: 10)).single.payloadJson)
+              as Map<String, dynamic>;
+      expect((payload['p_order'] as Map)['expected_collection_at'],
+          when.toIso8601String());
+    });
+
     test('is idempotent: a retry with the same order id does not duplicate',
         () async {
       await repo.createPickup(order(id: 'o1'), customer(id: 'c1'),
