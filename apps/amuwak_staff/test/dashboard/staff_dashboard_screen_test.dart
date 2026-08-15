@@ -28,6 +28,10 @@ import 'package:amuwak_staff/src/reports/items_breakdown_screen.dart';
 import 'package:amuwak_staff/src/staff/invite_staff_screen.dart';
 import 'package:amuwak_staff/src/orders/widgets/order_card.dart';
 import 'package:amuwak_staff/src/data/app_database.dart' hide ProofEvent;
+import 'package:amuwak_staff/src/customers/customer_form_screen.dart';
+import 'package:amuwak_staff/src/customers/customer_import_screen.dart';
+import 'package:amuwak_staff/src/customers/customers_list_screen.dart';
+import 'package:amuwak_staff/src/expenses/expenses_list_screen.dart';
 import 'package:amuwak_staff/src/shared/widgets/sync_status_banner.dart';
 import 'package:amuwak_staff/src/pricing/pricing_providers.dart';
 import 'package:amuwak_staff/src/pricing/pricing_settings.dart';
@@ -144,9 +148,13 @@ Future<void> pumpDashboardWithDb(
             .overrideWith((ref) => const Stream<DateTime?>.empty()),
         ordersStreamProvider
             .overrideWith((ref) => Stream<List<LaundryOrder>>.value(const [])),
-        // The report tab watches expenses; keep it off the Supabase mock.
+        // The report/expenses views watch expenses; keep it off the Supabase mock.
         expensesStreamProvider
             .overrideWith((ref) => Stream<List<Expense>>.value(const [])),
+        // The Customers tab watches this; empty by default (tests that need
+        // rows override it via [extraOverrides]).
+        customersStreamProvider
+            .overrideWith((ref) => Stream<List<Customer>>.value(const [])),
         outboxDeadLetteredProvider.overrideWith(
             (ref) => Stream<List<OutboxData>>.value(const [])),
         pullDeadLetteredProvider.overrideWith(
@@ -182,6 +190,16 @@ Future<void> pumpDashboardWithDb(
       ),
     ),
   );
+  await tester.pumpAndSettle();
+}
+
+/// Taps a bottom-nav destination by label, scoped to the NavigationBar so a
+/// matching AppBar title never makes the tap ambiguous.
+Future<void> tapNavTab(WidgetTester tester, String label) async {
+  await tester.tap(find.descendant(
+    of: find.byType(NavigationBar),
+    matching: find.text(label),
+  ));
   await tester.pumpAndSettle();
 }
 
@@ -252,27 +270,245 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.text('Report').last);
+    Future<void> tapTab(String label) async {
+      // On the current tab the label is unique to the nav bar; scope to the
+      // NavigationBar so a matching AppBar title can't make it ambiguous.
+      await tester.tap(find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text(label),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    void expectTitle(String title) => expect(
+          find.descendant(
+            of: find.byType(AppBar),
+            matching: find.text(title),
+          ),
+          findsOneWidget,
+        );
+
+    await tapTab('Expenses');
+    expectTitle('Expenses');
+
+    await tapTab('Customers');
+    expectTitle('Customers');
+
+    await tapTab('Account');
+    expectTitle('Account');
+  });
+
+  testWidgets('Expenses tab: the Record-expense FAB opens the entry screen',
+      (tester) async {
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentUserIdProvider.overrideWith((ref) => 'staff-1'),
+    ]);
+
+    await tapNavTab(tester, 'Expenses');
+    expect(find.byType(ExpensesListView), findsOneWidget);
+
+    await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    expect(
-      find.descendant(
-        of: find.byType(AppBar),
-        matching: find.text('Daily report'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.byType(ExpenseEntryScreen), findsOneWidget);
+  });
 
-    await tester.tap(find.text('Account').last);
+  testWidgets('Customers tab: renders the list of customers', (tester) async {
+    final ada = Customer(
+      id: 'c1',
+      name: 'Ada Lovelace',
+      phone: '0700111222',
+      address: null,
+      notes: null,
+      customRatePerKgUgx: null,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+      deletedAt: null,
+    );
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      customersStreamProvider
+          .overrideWith((ref) => Stream<List<Customer>>.value([ada])),
+    ]);
+
+    await tapNavTab(tester, 'Customers');
+
+    expect(find.byType(CustomersListView), findsOneWidget);
+    expect(find.text('Ada Lovelace'), findsOneWidget);
+  });
+
+  testWidgets('Customers tab: a manager can open the add-customer form',
+      (tester) async {
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('manager'),
+    ]);
+
+    await tapNavTab(tester, 'Customers');
+    await tester.tap(find.byKey(const Key('customers_empty_add')));
     await tester.pumpAndSettle();
 
-    expect(
-      find.descendant(
-        of: find.byType(AppBar),
-        matching: find.text('Account'),
-      ),
-      findsOneWidget,
+    expect(find.byType(CustomerFormScreen), findsOneWidget);
+  });
+
+  testWidgets('Customers tab: a manager can open the CSV import',
+      (tester) async {
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('manager'),
+    ]);
+
+    await tapNavTab(tester, 'Customers');
+    await tester.tap(find.byKey(const Key('customers_empty_import')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CustomerImportScreen), findsOneWidget);
+  });
+
+  testWidgets('Customers tab: a rider cannot add or import (RLS-gated)',
+      (tester) async {
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('driver'),
+    ]);
+
+    await tapNavTab(tester, 'Customers');
+
+    expect(find.text('Your customer list is empty'), findsOneWidget);
+    expect(find.byKey(const Key('customers_empty_add')), findsNothing);
+    expect(find.byKey(const Key('customers_empty_import')), findsNothing);
+  });
+
+  testWidgets('Account tab: Reports opens the daily report', (tester) async {
+    await pumpDashboardWithDb(tester);
+
+    await tapNavTab(tester, 'Account');
+    await tester.tap(find.text('Reports'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Daily report'), findsOneWidget);
+  });
+
+  testWidgets('Home: Business at a glance renders once orders load',
+      (tester) async {
+    await pumpDashboardWithDb(tester);
+
+    expect(find.text('Business at a glance'), findsOneWidget);
+    expect(find.byKey(const Key('glance_revenue')), findsOneWidget);
+    expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
+  });
+
+  testWidgets('Home: the Add customer quick action opens the form for a manager',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('manager'),
+    ]);
+
+    await tester.tap(find.text('Add customer'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CustomerFormScreen), findsOneWidget);
+  });
+
+  testWidgets('Home: a rider gets no Add customer quick action (RLS-gated)',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('driver'),
+    ]);
+
+    // Only in_shop/manager may write `customers` under RLS — the same gate the
+    // Customers tab applies. Offering the form to a rider would just surface a
+    // save-time failure after they filled it in. The other actions stay.
+    expect(find.text('Add customer'), findsNothing);
+    expect(find.text('New pickup'), findsOneWidget);
+    expect(find.text('Check order'), findsOneWidget);
+    expect(find.text('Report'), findsOneWidget);
+  });
+
+  testWidgets('Orders tab: a status chip filters the list', (tester) async {
+    const pending = LaundryOrder(
+      orderId: 'P1',
+      orderCode: 'P1',
+      customerName: 'Pending Cust',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
     );
+    const inProgress = LaundryOrder(
+      orderId: 'I1',
+      orderCode: 'I1',
+      customerName: 'Progress Cust',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.inProgress,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      ordersStreamProvider.overrideWith(
+          (ref) => Stream<List<LaundryOrder>>.value(const [pending, inProgress])),
+    ]);
+
+    await tapNavTab(tester, 'Orders');
+    // Both show under the default 'All' chip.
+    expect(find.text('Pending Cust'), findsOneWidget);
+    expect(find.text('Progress Cust'), findsOneWidget);
+
+    await tester.ensureVisible(
+        find.byKey(const Key('orders_chip_pendingPickup')));
+    await tester.tap(find.byKey(const Key('orders_chip_pendingPickup')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pending Cust'), findsOneWidget);
+    expect(find.text('Progress Cust'), findsNothing);
+  });
+
+  testWidgets('Orders tab: the search box filters the list', (tester) async {
+    const ada = LaundryOrder(
+      orderId: 'A1',
+      orderCode: 'A1',
+      customerName: 'Ada Lovelace',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    const grace = LaundryOrder(
+      orderId: 'G1',
+      orderCode: 'G1',
+      customerName: 'Grace Hopper',
+      serviceType: ServiceType.washOnly,
+      status: OrderStatus.pendingPickup,
+      timeLabel: 't',
+      itemCount: 1,
+      phone: 'p',
+      address: 'a',
+      notes: '',
+    );
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      ordersStreamProvider.overrideWith(
+          (ref) => Stream<List<LaundryOrder>>.value(const [ada, grace])),
+    ]);
+
+    await tapNavTab(tester, 'Orders');
+    await tester.enterText(find.byKey(const Key('orders_search')), 'grace');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Grace Hopper'), findsOneWidget);
+    expect(find.text('Ada Lovelace'), findsNothing);
   });
 
   testWidgets(
@@ -2215,74 +2451,15 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Report tab shows a progress indicator while the stream is loading',
-    (tester) async {
-      await tester.pumpWidget(ProviderScope(
-        overrides: [
-          // Pin the role: the header reads it, and it falls back to the restored
-          // session (a real AuthService) when the auth stream has not emitted.
-          currentRoleProvider.overrideWithValue(null),
-          supabaseClientProvider.overrideWithValue(_MockSupabaseClient()),
-          ordersStreamProvider.overrideWith((ref) => const Stream.empty()),
-          currentStaffProvider
-              .overrideWith((ref) => Stream<StaffData?>.value(null)),
-        ],
-        child: MaterialApp(
-          home: Builder(
-            builder: (context) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: StaffDashboardScreen(retrieveLostPhoto: () async => false),
-            ),
-          ),
-        ),
-      ));
-      await tester.pump();
-
-      await tester.tap(find.text('Report').last);
-      await tester.pump();
-
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    },
-  );
+  // The former "Report tab shows a progress indicator / retry affordance" tests
+  // were removed along with the Report bottom-nav tab. The report is now a
+  // pushed route (Home "Report" quick action, Account → Reports) that degrades
+  // to an empty report while orders load or error, so there is no per-tab
+  // loading/error affordance to assert. Orders loading/error is still covered by
+  // the Home-tab tests above.
 
   testWidgets(
-    'Report tab shows the retry affordance when the stream errors',
-    (tester) async {
-      await tester.pumpWidget(ProviderScope(
-        overrides: [
-          // Pin the role: the header reads it, and it falls back to the restored
-          // session (a real AuthService) when the auth stream has not emitted.
-          currentRoleProvider.overrideWithValue(null),
-          supabaseClientProvider.overrideWithValue(_MockSupabaseClient()),
-          ordersStreamProvider
-              .overrideWith((ref) => Stream.error(Exception('boom'))),
-          currentStaffProvider
-              .overrideWith((ref) => Stream<StaffData?>.value(null)),
-        ],
-        child: MaterialApp(
-          home: Builder(
-            builder: (context) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: StaffDashboardScreen(retrieveLostPhoto: () async => false),
-            ),
-          ),
-        ),
-      ));
-      await tester.pump();
-      await tester.pump();
-
-      await tester.tap(find.text('Report').last);
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.textContaining('Could not load orders'), findsOneWidget);
-      expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
-    },
-  );
-
-  testWidgets(
-    'Home "Report" quick action switches to the Report tab',
+    'Home "Report" quick action opens the daily report',
     (tester) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
@@ -2290,10 +2467,9 @@ void main() {
 
       await pumpDashboardWithDb(tester);
 
-      // Two "Report" texts exist: the Home quick-action card and the bottom-nav
-      // label. The quick-action one lives inside the scrollable ListView; the
-      // nav label inside the NavigationBar. Target the former by excluding any
-      // 'Report' text sitting under the NavigationBar.
+      // Report left the bottom nav, so the only "Report" is the Home quick
+      // action inside the scrollable ListView. Scope to the ListView anyway so a
+      // future stray label can't make the tap ambiguous.
       final homeReport = find.descendant(
         of: find.byType(ListView),
         matching: find.text('Report'),

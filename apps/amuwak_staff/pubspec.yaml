@@ -57,6 +57,9 @@ dependencies:
   # SharedPreferences.setMockInitialValues.
   shared_preferences: ^2.5.0
   permission_handler: ^12.0.3
+  # Bulk customer import: pick a CSV file (web + desktop + mobile). Uses
+  # withData so the bytes are available on web without a filesystem path.
+  file_picker: ^8.1.2
 
   # Hands a generated file (orders CSV, bag-tag PDF) to the OS: a browser
   # download on the web PWA, the share sheet on Android/iOS.
