@@ -1,12 +1,20 @@
+import 'dart:convert' as convert;
 import 'dart:developer' as developer;
 
 import 'package:amuwak_core/amuwak_core.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../auth/mfa_enrolment_screen.dart';
 import '../auth/sign_out_provider.dart';
+import 'business_glance.dart';
+import '../customers/customer_form_screen.dart';
+import '../customers/customer_import_screen.dart';
+import '../customers/customers_list_screen.dart';
+import '../data/app_database.dart' show Customer;
+import '../expenses/expenses_list_screen.dart';
 import 'current_staff_provider.dart';
 import 'dashboard_header_content.dart';
 import '../notifications/notification_summary.dart';
@@ -22,6 +30,7 @@ import '../orders/edit_order_screen.dart';
 import '../orders/order_details_screen.dart';
 import '../orders/order_filter.dart';
 import '../orders/order_filter_screen.dart';
+import '../orders/order_list_extensions.dart';
 import '../orders/order_search_screen.dart';
 import '../orders/widgets/order_card_list.dart';
 import '../orders/proof/barcode_reader.dart';
@@ -561,6 +570,115 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
     );
   }
 
+  /// Soft-deletes an expense from the Expenses tab after a confirm. The stream
+  /// re-emits and the row drops off; a failure surfaces a retry SnackBar.
+  Future<void> _deleteExpense(Expense expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete expense?'),
+        content: Text(
+            '${expense.category.label} — ${formatUgx(expense.amountUgx)}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(expensesRepositoryProvider).softDelete(expense.id);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete — please retry.')),
+      );
+    }
+  }
+
+  /// Opens the standalone Daily Report. It lost its bottom-nav tab to Expenses,
+  /// so it's reached from the Home "Report" quick action and the Account tab.
+  /// A [Consumer] keeps it live off the orders/expenses streams.
+  void _openReport() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Daily report',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          body: Consumer(
+            builder: (context, ref, _) => DailyReportView(
+              orders: ref.watch(ordersStreamProvider).valueOrNull ??
+                  const <LaundryOrder>[],
+              expenses: ref.watch(expensesStreamProvider).valueOrNull ??
+                  const <Expense>[],
+              onOpenFiltered: _openFilteredOrders,
+              onOpenItems: _openItemsBreakdown,
+              onAddExpense: _openAddExpense,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Opens the add/edit customer form. Prefetches the customer list so the form
+  /// can reject a phone that duplicates an existing record. [existing] edits.
+  Future<void> _openCustomerForm({Customer? existing}) async {
+    final repo = ref.read(customersRepositoryProvider);
+    var existingCustomers = const <Customer>[];
+    try {
+      existingCustomers = await repo.getAll();
+    } catch (_) {
+      // Dedup is best-effort; proceed with none if the fetch fails.
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CustomerFormScreen(
+          save: repo.upsertCustomer,
+          existing: existing,
+          existingCustomers: existingCustomers,
+        ),
+      ),
+    );
+  }
+
+  /// Opens the CSV bulk-import flow, wiring the real file picker + repository.
+  Future<void> _openCustomerImport() async {
+    final repo = ref.read(customersRepositoryProvider);
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CustomerImportScreen(
+          pickCsvText: _pickCsvText,
+          loadExisting: repo.getAll,
+          importCustomers: repo.importCustomers,
+        ),
+      ),
+    );
+  }
+
+  /// Prompts for a CSV file and returns its UTF-8 text (null if cancelled).
+  /// `withData` so the bytes arrive without a filesystem path (web-safe).
+  Future<String?> _pickCsvText() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['csv'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final bytes = result.files.first.bytes;
+    if (bytes == null) return null;
+    return convert.utf8.decode(bytes, allowMalformed: true);
+  }
+
   void _openOrderSearch() {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -629,8 +747,10 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
       case 1:
         return 'Orders';
       case 2:
-        return 'Daily report';
+        return 'Expenses';
       case 3:
+        return 'Customers';
+      case 4:
         return 'Account';
       default:
         return 'Amuwak Staff';
@@ -640,6 +760,10 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final ordersAsync = ref.watch(ordersStreamProvider);
+    // Customer create/import/edit is gated to the roles RLS lets write the
+    // customers table (in_shop, manager); a rider can still browse the list.
+    final canManageCustomers =
+        const {'in_shop', 'manager'}.contains(ref.watch(currentRoleProvider));
     // Badge count only: pendingPickupCount keeps the "new pickup" predicate in
     // one place (shared with the summary) while skipping the summary's sort on
     // every dashboard rebuild (e.g. tab switches).
@@ -689,28 +813,29 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
                 onRetry: () => ref.invalidate(ordersStreamProvider),
               ),
             ),
-          2 => ordersAsync.when(
-              // Expenses are only needed on this tab — watch them here so the
-              // other tabs (and tests that never open the report) don't build
-              // the expenses stream. Degrade to empty while loading/errored so a
-              // hiccup never blanks the report; Net just reads as earned revenue.
-              data: (orders) => DailyReportView(
-                orders: orders,
-                expenses: ref.watch(expensesStreamProvider).valueOrNull ??
-                    const <Expense>[],
-                onOpenFiltered: _openFilteredOrders,
-                onOpenItems: _openItemsBreakdown,
-                onAddExpense: _openAddExpense,
-                // TODO(v2): pass onOpenExpenses once an expenses list screen
-                // exists — until then the Expenses card has no tap target.
-              ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => _ErrorRetry(
-                onRetry: () => ref.invalidate(ordersStreamProvider),
-              ),
+          // Expenses tab: the ledger list. Degrade to empty while the stream
+          // loads/errors so a hiccup never blanks the tab.
+          2 => ExpensesListView(
+              expenses: ref.watch(expensesStreamProvider).valueOrNull ??
+                  const <Expense>[],
+              onAddExpense: _openAddExpense,
+              onDelete: _deleteExpense,
             ),
-          3 => _AccountTab(
+          // Customers tab: browse + search; Add / Import / tap-to-edit are gated
+          // to the roles RLS lets write the customers table.
+          3 => CustomersListView(
+              customers: ref.watch(customersStreamProvider).valueOrNull ??
+                  const <Customer>[],
+              onAddCustomer: _openCustomerForm,
+              onImport: _openCustomerImport,
+              onCustomerTap: canManageCustomers
+                  ? (customer) => _openCustomerForm(existing: customer)
+                  : null,
+              canManage: canManageCustomers,
+            ),
+          4 => _AccountTab(
               onSignOut: _onSignOutPressed,
+              onOpenReport: _openReport,
               onOpenPricingSettings: _openPricingSettings,
               onInviteStaff: _openInviteStaff,
               onOpenStaff: _openStaffList,
@@ -740,20 +865,32 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
                   orders: ordersAsync.valueOrNull,
                   onOpenFiltered: _openFilteredOrders,
                   onNewPickup: _handleNewPickup,
-                  onShowReport: () => _selectTab(2),
+                  // Same RLS gate as the Customers tab: a rider cannot write
+                  // `customers`, so the shortcut is withheld rather than
+                  // failing at save time.
+                  onAddCustomer:
+                      canManageCustomers ? _openCustomerForm : null,
+                  onShowReport: _openReport,
                   onCheckOrder: _openOrderSearch,
                 ),
         },
       ),
-      // A create entry point on the Orders tab (Home already has the "New
-      // pickup" quick action). Reuses the same flow, so there's one create path.
-      floatingActionButton: _selectedTabIndex == 1
-          ? FloatingActionButton.extended(
-              onPressed: _handleNewPickup,
-              icon: const Icon(Icons.add),
-              label: const Text('New pickup'),
-            )
-          : null,
+      // Per-tab create action. Orders → New pickup (Home also has that quick
+      // action); Expenses → Record expense (the list itself has no add control
+      // once populated). Customers add via the list's own Add/Import buttons.
+      floatingActionButton: switch (_selectedTabIndex) {
+        1 => FloatingActionButton.extended(
+            onPressed: _handleNewPickup,
+            icon: const Icon(Icons.add),
+            label: const Text('New pickup'),
+          ),
+        2 => FloatingActionButton.extended(
+            onPressed: _openAddExpense,
+            icon: const Icon(Icons.add),
+            label: const Text('Record expense'),
+          ),
+        _ => null,
+      },
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTabIndex,
         onDestinationSelected: _selectTab,
@@ -769,9 +906,14 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
             label: 'Orders',
           ),
           NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Report',
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long_rounded),
+            label: 'Expenses',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.people_outline_rounded),
+            selectedIcon: Icon(Icons.people_rounded),
+            label: 'Customers',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
@@ -819,6 +961,7 @@ class _HomeTab extends StatelessWidget {
     required this.orders,
     required this.onOpenFiltered,
     required this.onNewPickup,
+    required this.onAddCustomer,
     required this.onShowReport,
     required this.onCheckOrder,
   });
@@ -826,6 +969,10 @@ class _HomeTab extends StatelessWidget {
   final List<LaundryOrder>? orders;
   final void Function(OrderFilter) onOpenFiltered;
   final VoidCallback onNewPickup;
+
+  /// Null hides the Add-customer quick action for roles RLS bars from writing
+  /// the `customers` table.
+  final VoidCallback? onAddCustomer;
   final VoidCallback onShowReport;
   final VoidCallback onCheckOrder;
 
@@ -866,10 +1013,16 @@ class _HomeTab extends StatelessWidget {
       children: [
         reveal(_DashboardHeader(orders: orders)),
         const SizedBox(height: AppSpacing.xl),
+        // Today's headline numbers, alongside the summary grid once data lands.
+        if (!loading) ...[
+          reveal(const _BusinessAtAGlance()),
+          const SizedBox(height: AppSpacing.xl),
+        ],
         reveal(middle),
         const SizedBox(height: AppSpacing.xxl),
         reveal(_QuickActions(
           onNewPickup: onNewPickup,
+          onAddCustomer: onAddCustomer,
           onShowReport: onShowReport,
           onCheckOrder: onCheckOrder,
         )),
@@ -878,7 +1031,7 @@ class _HomeTab extends StatelessWidget {
   }
 }
 
-class _OrdersBody extends StatelessWidget {
+class _OrdersBody extends StatefulWidget {
   const _OrdersBody({
     required this.orders,
     required this.onOrderTap,
@@ -894,7 +1047,35 @@ class _OrdersBody extends StatelessWidget {
   final void Function(LaundryOrder) onAdvanceOrderStatus;
 
   @override
+  State<_OrdersBody> createState() => _OrdersBodyState();
+}
+
+class _OrdersBodyState extends State<_OrdersBody> {
+  final _searchController = TextEditingController();
+  OrderFilter _filter = OrderFilter.all;
+  String _query = '';
+
+  // The status filters shown as chips — the same subsets as the Home summary
+  // cards, so a chip count can never disagree with a card count.
+  static const _filters = [
+    OrderFilter.all,
+    OrderFilter.pendingPickup,
+    OrderFilter.inProgress,
+    OrderFilter.readyForDelivery,
+    OrderFilter.completedToday,
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Status chip narrows first, then the text query — same OrderFilter/searchBy
+    // helpers the summary cards and search screen use.
+    final visible = _filter.apply(widget.orders).searchBy(_query);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -903,20 +1084,47 @@ class _OrdersBody extends StatelessWidget {
             AppSpacing.xl,
             AppSpacing.sm,
             AppSpacing.xl,
-            AppSpacing.md,
+            AppSpacing.sm,
           ),
-          child: Text(
-            'Assigned orders',
-            style: Theme.of(context).textTheme.titleLarge,
+          child: TextField(
+            key: const Key('orders_search'),
+            controller: _searchController,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search orders by name, code or phone',
+              border: OutlineInputBorder(),
+            ),
           ),
         ),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            itemCount: _filters.length,
+            separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+            itemBuilder: (context, i) {
+              final f = _filters[i];
+              return Center(
+                child: FilterChip(
+                  key: Key('orders_chip_${f.name}'),
+                  label: Text('${f.label} (${f.count(widget.orders)})'),
+                  selected: _filter == f,
+                  onSelected: (_) => setState(() => _filter = f),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Expanded(
           child: OrderCardList(
-            orders: orders,
-            onOrderTap: onOrderTap,
-            onEditOrder: onEditOrder,
-            onDeleteOrder: onDeleteOrder,
-            onAdvanceOrderStatus: onAdvanceOrderStatus,
+            orders: visible,
+            onOrderTap: widget.onOrderTap,
+            onEditOrder: widget.onEditOrder,
+            onDeleteOrder: widget.onDeleteOrder,
+            onAdvanceOrderStatus: widget.onAdvanceOrderStatus,
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.xl,
               0,
@@ -933,6 +1141,7 @@ class _OrdersBody extends StatelessWidget {
 class _AccountTab extends StatelessWidget {
   const _AccountTab({
     required this.onSignOut,
+    required this.onOpenReport,
     required this.onOpenPricingSettings,
     required this.onInviteStaff,
     required this.onOpenStaff,
@@ -944,6 +1153,10 @@ class _AccountTab extends StatelessWidget {
   });
 
   final VoidCallback onSignOut;
+
+  /// Opens the Daily Report, which moved off the bottom nav to make room for
+  /// the Expenses and Customers tabs.
+  final VoidCallback onOpenReport;
   final VoidCallback onOpenPricingSettings;
   final VoidCallback onInviteStaff;
 
@@ -1028,6 +1241,18 @@ class _AccountTab extends StatelessWidget {
           icon: Icons.schedule_outlined,
           label: 'Shift',
           value: 'Today',
+        ),
+        const SizedBox(height: AppSpacing.lg2),
+        AppCard(
+          onTap: onOpenReport,
+          child: Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, color: colorScheme.primary),
+              const SizedBox(width: AppSpacing.md),
+              const Expanded(child: Text('Reports')),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.lg2),
         if (canManagePricing) ...[
@@ -1394,19 +1619,164 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+/// Home "Business at a glance": today's collected revenue + customers added
+/// today. A [ConsumerWidget] so it self-watches the orders + customers streams
+/// (Riverpod dedups the orders watch the shell already holds).
+class _BusinessAtAGlance extends ConsumerWidget {
+  const _BusinessAtAGlance();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orders =
+        ref.watch(ordersStreamProvider).valueOrNull ?? const <LaundryOrder>[];
+    final customers =
+        ref.watch(customersStreamProvider).valueOrNull ?? const <Customer>[];
+    final glance =
+        BusinessGlance.forToday(orders, customers, now: DateTime.now());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Business at a glance',
+            style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.md),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _GlanceTile(
+                  key: const Key('glance_revenue'),
+                  icon: Icons.payments_outlined,
+                  value: formatUgx(glance.revenueUgx),
+                  title: "Today's revenue",
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: _GlanceTile(
+                  key: const Key('glance_new_customers'),
+                  icon: Icons.person_add_alt_1_outlined,
+                  value: '${glance.newCustomers}',
+                  title: 'New customers',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GlanceTile extends StatelessWidget {
+  const _GlanceTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.title,
+  });
+
+  final IconData icon;
+  final String value;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(icon, color: colorScheme.primary),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            value,
+            style: textTheme.titleLarge,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(title, style: textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
 class _QuickActions extends StatelessWidget {
   const _QuickActions({
     required this.onNewPickup,
+    required this.onAddCustomer,
     required this.onShowReport,
     required this.onCheckOrder,
   });
 
   final VoidCallback onNewPickup;
+
+  /// Null drops the Add-customer tile (RLS-gated to in_shop/manager) and
+  /// reflows the grid.
+  final VoidCallback? onAddCustomer;
   final VoidCallback onShowReport;
   final VoidCallback onCheckOrder;
 
   @override
   Widget build(BuildContext context) {
+    const gap = SizedBox(width: AppSpacing.sm + 2);
+    // Promote to a local so the null check sticks: a public field cannot be
+    // type-promoted, and _ActionButton.onTap is non-nullable.
+    final addCustomer = onAddCustomer;
+    final actions = <Widget>[
+      _ActionButton(
+        label: 'New pickup',
+        icon: Icons.add_location_alt_outlined,
+        onTap: onNewPickup,
+      ),
+      if (addCustomer != null)
+        _ActionButton(
+          label: 'Add customer',
+          icon: Icons.person_add_alt_1_outlined,
+          onTap: addCustomer,
+        ),
+      _ActionButton(
+        label: 'Check order',
+        icon: Icons.search_rounded,
+        onTap: onCheckOrder,
+      ),
+      _ActionButton(
+        label: 'Report',
+        icon: Icons.bar_chart_rounded,
+        onTap: onShowReport,
+      ),
+    ];
+
+    // Two tiles per row, built from whatever survived the role gate, so a
+    // withheld action reflows the grid instead of leaving a hole in it.
+    final rows = <Widget>[];
+    for (var i = 0; i < actions.length; i += 2) {
+      if (rows.isNotEmpty) {
+        rows.add(const SizedBox(height: AppSpacing.sm + 2));
+      }
+      final trailing = i + 1 < actions.length ? actions[i + 1] : null;
+      rows.add(Row(
+        children: [
+          Expanded(child: actions[i]),
+          gap,
+          // An odd count leaves the last slot empty rather than letting the
+          // final tile stretch to full width.
+          Expanded(child: trailing ?? const SizedBox.shrink()),
+        ],
+      ));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1415,33 +1785,7 @@ class _QuickActions extends StatelessWidget {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: AppSpacing.md),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionButton(
-                label: 'New pickup',
-                icon: Icons.add_location_alt_outlined,
-                onTap: onNewPickup,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm + 2),
-            Expanded(
-              child: _ActionButton(
-                label: 'Check order',
-                icon: Icons.search_rounded,
-                onTap: onCheckOrder,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm + 2),
-            Expanded(
-              child: _ActionButton(
-                label: 'Report',
-                icon: Icons.bar_chart_rounded,
-                onTap: onShowReport,
-              ),
-            ),
-          ],
-        ),
+        ...rows,
       ],
     );
   }

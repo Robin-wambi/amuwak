@@ -2,6 +2,7 @@ import 'package:amuwak_core/models.dart' show OrderMessagesRepository;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/app_database.dart';
 import '../expenses/expense.dart';
 import '../expenses/expenses_repository.dart';
 import '../orders/order.dart';
@@ -52,6 +53,12 @@ final ordersRepositoryProvider = Provider<OrdersRepository>(
 
 final customersRepositoryProvider = Provider<CustomersRepository>(
   (ref) => CustomersRepository(ref.watch(supabaseClientProvider)),
+);
+
+/// Live list of non-deleted customers, ordered by name. Backs the Customers tab
+/// list. Mirrors [ordersStreamProvider] / [expensesStreamProvider].
+final customersStreamProvider = StreamProvider<List<Customer>>(
+  (ref) => ref.watch(customersRepositoryProvider).watchAll(),
 );
 
 final staffRepositoryProvider = Provider<StaffRepository>(
