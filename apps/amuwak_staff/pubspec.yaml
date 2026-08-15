@@ -61,8 +61,11 @@ dependencies:
   # Hands a generated file (orders CSV, bag-tag PDF) to the OS: a browser
   # download on the web PWA, the share sheet on Android/iOS.
   share_plus: ^10.1.4
-  # Bag tags as a PDF, for sites with no Bluetooth label printer.
-  pdf: ^3.11.1
+  # Deflates the bag-tag PDF's image stream (tag_pdf.dart). Already in the tree
+  # via `image`; declared directly because we import it. NOT the `pdf` package:
+  # every published version of that conflicts with this app's dependencies on
+  # the pinned Flutter SDK — see the note in tag_pdf.dart.
+  archive: ^4.0.7
 
 dev_dependencies:
   flutter_test:
