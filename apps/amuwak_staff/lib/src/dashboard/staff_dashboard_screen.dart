@@ -865,7 +865,11 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
                   orders: ordersAsync.valueOrNull,
                   onOpenFiltered: _openFilteredOrders,
                   onNewPickup: _handleNewPickup,
-                  onAddCustomer: _openCustomerForm,
+                  // Same RLS gate as the Customers tab: a rider cannot write
+                  // `customers`, so the shortcut is withheld rather than
+                  // failing at save time.
+                  onAddCustomer:
+                      canManageCustomers ? _openCustomerForm : null,
                   onShowReport: _openReport,
                   onCheckOrder: _openOrderSearch,
                 ),
@@ -965,7 +969,10 @@ class _HomeTab extends StatelessWidget {
   final List<LaundryOrder>? orders;
   final void Function(OrderFilter) onOpenFiltered;
   final VoidCallback onNewPickup;
-  final VoidCallback onAddCustomer;
+
+  /// Null hides the Add-customer quick action for roles RLS bars from writing
+  /// the `customers` table.
+  final VoidCallback? onAddCustomer;
   final VoidCallback onShowReport;
   final VoidCallback onCheckOrder;
 
@@ -1714,13 +1721,62 @@ class _QuickActions extends StatelessWidget {
   });
 
   final VoidCallback onNewPickup;
-  final VoidCallback onAddCustomer;
+
+  /// Null drops the Add-customer tile (RLS-gated to in_shop/manager) and
+  /// reflows the grid.
+  final VoidCallback? onAddCustomer;
   final VoidCallback onShowReport;
   final VoidCallback onCheckOrder;
 
   @override
   Widget build(BuildContext context) {
     const gap = SizedBox(width: AppSpacing.sm + 2);
+    // Promote to a local so the null check sticks: a public field cannot be
+    // type-promoted, and _ActionButton.onTap is non-nullable.
+    final addCustomer = onAddCustomer;
+    final actions = <Widget>[
+      _ActionButton(
+        label: 'New pickup',
+        icon: Icons.add_location_alt_outlined,
+        onTap: onNewPickup,
+      ),
+      if (addCustomer != null)
+        _ActionButton(
+          label: 'Add customer',
+          icon: Icons.person_add_alt_1_outlined,
+          onTap: addCustomer,
+        ),
+      _ActionButton(
+        label: 'Check order',
+        icon: Icons.search_rounded,
+        onTap: onCheckOrder,
+      ),
+      _ActionButton(
+        label: 'Report',
+        icon: Icons.bar_chart_rounded,
+        onTap: onShowReport,
+      ),
+    ];
+
+    // Two tiles per row, built from whatever survived the role gate, so a
+    // withheld action reflows the grid instead of leaving a hole in it.
+    final rows = <Widget>[];
+    for (var i = 0; i < actions.length; i += 2) {
+      if (rows.isNotEmpty) {
+        rows.add(const SizedBox(height: AppSpacing.sm + 2));
+      }
+      final trailing = i + 1 < actions.length ? actions[i + 1] : null;
+      rows.add(Row(
+        children: [
+          Expanded(child: actions[i]),
+          gap,
+          // An odd count leaves the last slot empty rather than letting the
+          // final tile stretch to full width.
+          Expanded(child: trailing ?? const SizedBox.shrink()),
+        ],
+      ));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1729,45 +1785,7 @@ class _QuickActions extends StatelessWidget {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: AppSpacing.md),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionButton(
-                label: 'New pickup',
-                icon: Icons.add_location_alt_outlined,
-                onTap: onNewPickup,
-              ),
-            ),
-            gap,
-            Expanded(
-              child: _ActionButton(
-                label: 'Add customer',
-                icon: Icons.person_add_alt_1_outlined,
-                onTap: onAddCustomer,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm + 2),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionButton(
-                label: 'Check order',
-                icon: Icons.search_rounded,
-                onTap: onCheckOrder,
-              ),
-            ),
-            gap,
-            Expanded(
-              child: _ActionButton(
-                label: 'Report',
-                icon: Icons.bar_chart_rounded,
-                onTap: onShowReport,
-              ),
-            ),
-          ],
-        ),
+        ...rows,
       ],
     );
   }

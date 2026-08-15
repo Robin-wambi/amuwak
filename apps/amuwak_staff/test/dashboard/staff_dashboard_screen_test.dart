@@ -394,18 +394,39 @@ void main() {
     expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
   });
 
-  testWidgets('Home: the Add customer quick action opens the form',
+  testWidgets('Home: the Add customer quick action opens the form for a manager',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await pumpDashboardWithDb(tester);
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('manager'),
+    ]);
 
     await tester.tap(find.text('Add customer'));
     await tester.pumpAndSettle();
 
     expect(find.byType(CustomerFormScreen), findsOneWidget);
+  });
+
+  testWidgets('Home: a rider gets no Add customer quick action (RLS-gated)',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('driver'),
+    ]);
+
+    // Only in_shop/manager may write `customers` under RLS — the same gate the
+    // Customers tab applies. Offering the form to a rider would just surface a
+    // save-time failure after they filled it in. The other actions stay.
+    expect(find.text('Add customer'), findsNothing);
+    expect(find.text('New pickup'), findsOneWidget);
+    expect(find.text('Check order'), findsOneWidget);
+    expect(find.text('Report'), findsOneWidget);
   });
 
   testWidgets('Orders tab: a status chip filters the list', (tester) async {
