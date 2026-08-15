@@ -113,10 +113,16 @@ class ExpensesListView extends StatelessWidget {
 typedef _DayGroup = ({DateTime day, List<Expense> expenses});
 
 /// Buckets a date-descending list into consecutive same-day groups.
+///
+/// [Expense.spentAt] comes back from Supabase as UTC, so it is localized before
+/// the day components are read — without that, an expense recorded in the first
+/// hours of the local day (the EAT 00:00–03:00 window) lands under the previous
+/// day's header. Mirrors the same normalization in `OrderListGrouping.groupByDay`.
 List<_DayGroup> _groupByDay(List<Expense> sorted) {
   final out = <_DayGroup>[];
   for (final e in sorted) {
-    final day = DateTime(e.spentAt.year, e.spentAt.month, e.spentAt.day);
+    final local = e.spentAt.toLocal();
+    final day = DateTime(local.year, local.month, local.day);
     if (out.isNotEmpty && out.last.day == day) {
       out.last.expenses.add(e);
     } else {

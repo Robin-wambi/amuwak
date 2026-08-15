@@ -47,6 +47,24 @@ void main() {
     expect(newest, lessThan(oldest));
   });
 
+  testWidgets('day header follows the local calendar day, not the UTC one',
+      (tester) async {
+    // spentAt arrives from Supabase as UTC; the same instant expressed as UTC
+    // vs local must land under one shared day header. Without toLocal() the two
+    // diverge for an instant whose UTC and local calendar days differ (the EAT
+    // 00:00–03:00 window) — this fails on any non-UTC machine if the
+    // normalization regresses, and never false-fails on a UTC machine.
+    final instantUtc = DateTime.utc(2026, 8, 13, 21, 30); // 00:30 EAT, 14 Aug
+
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(id: 'utc', spentAt: instantUtc),
+      _expense(id: 'local', spentAt: instantUtc.toLocal()),
+    ])));
+
+    // One instant, one bucket — two headers means the UTC day leaked through.
+    expect(find.textContaining('Aug 2026'), findsOneWidget);
+  });
+
   testWidgets('renders each expense category label, note and amount',
       (tester) async {
     await tester.pumpWidget(_host(ExpensesListView(expenses: [
