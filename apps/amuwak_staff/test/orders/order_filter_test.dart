@@ -217,6 +217,24 @@ void main() {
       expect(OrderFilter.overdue.matches(o, now: now()), isFalse);
     });
 
+    test('classification is independent of UTC-vs-local expectedCollectionAt',
+        () {
+      // expected_collection_at arrives from Supabase as UTC; the same instant
+      // expressed as UTC vs local must classify identically. Without toLocal()
+      // these diverge for an instant whose UTC and local calendar days differ
+      // (the EAT 00:00–03:00 window) — this fails on any non-UTC machine if
+      // the normalization regresses, and never false-fails on a UTC machine.
+      final instantUtc = DateTime.utc(2026, 6, 10, 21, 30); // 00:30 EAT Jun 11
+      final asUtc =
+          _order(OrderStatus.inProgress, expectedCollectionAt: instantUtc);
+      final asLocal = _order(OrderStatus.inProgress,
+          expectedCollectionAt: instantUtc.toLocal());
+      expect(
+        OrderFilter.overdue.matches(asUtc, now: now()),
+        OrderFilter.overdue.matches(asLocal, now: now()),
+      );
+    });
+
     test('label and newestFirst', () {
       expect(OrderFilter.overdue.label, 'Overdue');
       expect(OrderFilter.overdue.newestFirst, isFalse);
