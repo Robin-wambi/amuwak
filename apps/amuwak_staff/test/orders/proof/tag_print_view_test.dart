@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:amuwak_staff/src/orders/proof/printable_tag.dart';
@@ -190,5 +192,67 @@ void main() {
 
     expect(store.load(), equals(device));
     expect(printer.printed, hasLength(1));
+  });
+
+  group('download as PDF', () {
+    // buildTagPdf parses the captured bytes as an image, so this group needs a
+    // real PNG rather than the sentinel _tagBytes the print tests use.
+    final png =
+        Uint8List.fromList(img.encodePng(img.Image(width: 40, height: 60)));
+
+    Future<({Uint8List? bytes, String? filename})> pumpAndDownload(
+      WidgetTester tester, {
+      required LabelPrinter? printer,
+    }) async {
+      Uint8List? shared;
+      String? name;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TagPrintView(
+              orderCode: 'AMW-2026-0042',
+              customerName: 'Jane Doe',
+              labelPrinter: printer,
+              captureTag: (_) async => png,
+              requestBluetoothPermission: () async => true,
+              sharePdf: (bytes, filename) async {
+                shared = bytes;
+                name = filename;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('download_tag_pdf')));
+      await tester.pumpAndSettle();
+      return (bytes: shared, filename: name);
+    }
+
+    testWidgets('offers the download even with no printer wired up',
+        (tester) async {
+      // The whole point: a printerless site still needs a way to get the tag
+      // out of the app.
+      await _pump(tester, printer: null);
+
+      expect(find.byKey(const Key('download_tag_pdf')), findsOneWidget);
+    });
+
+    testWidgets('offers the download alongside printing', (tester) async {
+      final printer = FakeLabelPrinter(
+        connected: const PrinterDevice(id: 'AB:CD', name: 'Munbyn'),
+      );
+      await _pump(tester, printer: printer);
+
+      expect(find.byKey(const Key('download_tag_pdf')), findsOneWidget);
+      expect(find.byKey(const Key('print_tag')), findsOneWidget);
+    });
+
+    testWidgets('shares a PDF named after the order', (tester) async {
+      final result = await pumpAndDownload(tester, printer: null);
+
+      expect(latin1.decode(result.bytes!.take(5).toList()), '%PDF-');
+      expect(result.filename, 'AMW-2026-0042.pdf');
+    });
   });
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:amuwak_core/amuwak_core.dart';
+import 'package:amuwak_core/models.dart' show ordersCsvBytes;
+import '../shared/file_share.dart';
 import '../sync/repository_providers.dart';
 import 'order.dart';
 import 'order_filter.dart';
@@ -33,6 +35,7 @@ class OrderFilterScreen extends ConsumerWidget {
     this.onNewPickup,
     this.now,
     this.title,
+    this.shareCsv = shareCsvFile,
   });
 
   final OrderFilter filter;
@@ -59,13 +62,35 @@ class OrderFilterScreen extends ConsumerWidget {
   /// real clock in production.
   final DateTime Function()? now;
 
+  /// Delivers the exported CSV. Injected so tests capture the bytes instead of
+  /// opening a share sheet.
+  final FileSharer shareCsv;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ordersAsync = ref.watch(ordersStreamProvider);
+    // Resolved once and shared by the export action and the list, so what the
+    // rider exports is exactly what they are looking at.
+    final visible = ordersAsync.maybeWhen(
+      data: (orders) => filter.apply(orders, now: now),
+      orElse: () => const <LaundryOrder>[],
+    );
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(title: Text(title ?? filter.label)),
+      appBar: AppBar(
+        title: Text(title ?? filter.label),
+        actions: [
+          // Nothing to export from an empty (or still-loading) list.
+          if (visible.isNotEmpty)
+            IconButton(
+              key: const Key('export_orders_csv'),
+              tooltip: 'Export CSV',
+              icon: const Icon(Icons.download_outlined),
+              onPressed: () => _exportCsv(context, visible),
+            ),
+        ],
+      ),
       floatingActionButton: onNewPickup == null
           ? null
           : FloatingActionButton.extended(
@@ -80,15 +105,31 @@ class OrderFilterScreen extends ConsumerWidget {
           headline: "Couldn't load orders",
           subtitle: 'Please try again.',
         ),
-        data: (orders) => _buildBody(context, orders),
+        data: (_) => _buildBody(context, visible),
       ),
     );
   }
 
+  /// Exports the orders currently on screen and hands the file to the OS.
+  Future<void> _exportCsv(
+    BuildContext context,
+    List<LaundryOrder> orders,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final stamp = filenameDate((now ?? DateTime.now)());
+    final name = 'orders-${filenameSlug(title ?? filter.label)}-$stamp.csv';
+    try {
+      await shareCsv(ordersCsvBytes(orders), name);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not export the orders: $e')),
+      );
+    }
+  }
+
   Widget _buildBody(BuildContext context, List<LaundryOrder> orders) {
-    final groups = filter
-        .apply(orders, now: now)
-        .groupByDay(newestFirst: filter.newestFirst, now: now);
+    final groups =
+        orders.groupByDay(newestFirst: filter.newestFirst, now: now);
 
     if (groups.isEmpty) {
       return const EmptyState(

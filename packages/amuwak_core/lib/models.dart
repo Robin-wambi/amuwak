@@ -18,6 +18,7 @@
 library;
 
 export 'src/orders/order.dart';
+export 'src/orders/orders_csv.dart';
 export 'src/orders/proof_event.dart';
 export 'src/customers/customer.dart';
 export 'src/sync/supabase_payloads.dart';
