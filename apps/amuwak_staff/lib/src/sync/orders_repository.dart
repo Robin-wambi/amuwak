@@ -425,6 +425,11 @@ class OrdersRepository {
       createdAt: Value(now),
       updatedAt: Value(now),
       ratePerKgSnapshotUgx: Value(order.ratePerKgSnapshotUgx),
+      // Carried onto the local row, not only into the outbox payload: the
+      // screens read Drift, so an audit that lived only in the queued RPC would
+      // be invisible on this device until the puller brought it back.
+      rateOverrideReason: Value(order.rateOverrideReason),
+      rateOverrideFromUgx: Value(order.rateOverrideFromUgx),
       estimatedWeightKg: Value(order.estimatedWeightKg),
       finalWeightKg: Value(order.finalWeightKg),
       lineItems:

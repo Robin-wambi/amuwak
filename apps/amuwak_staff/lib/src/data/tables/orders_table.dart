@@ -30,6 +30,11 @@ class Orders extends Table {
   DateTimeColumn get deletedAt          => dateTime().named('deleted_at').nullable()();
 
   RealColumn     get ratePerKgSnapshotUgx => real().named('rate_per_kg_snapshot_ugx').withDefault(const Constant(0))();
+  // Why this order was billed at a rate other than the one that would otherwise
+  // apply, and what that rate was (Supabase migration 0059). Both nullable: an
+  // override is the exception, and a null pair means "priced normally".
+  TextColumn     get rateOverrideReason  => text().named('rate_override_reason').nullable()();
+  RealColumn     get rateOverrideFromUgx => real().named('rate_override_from_ugx').nullable()();
   RealColumn     get estimatedWeightKg    => real().named('estimated_weight_kg').nullable()();
   RealColumn     get finalWeightKg        => real().named('final_weight_kg').nullable()();
   TextColumn     get lineItems            => text().named('line_items').withDefault(const Constant('[]'))();

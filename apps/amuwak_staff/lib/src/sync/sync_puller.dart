@@ -280,6 +280,11 @@ class SyncPuller {
         // row predating a column, matching `LaundryOrder.fromSupabase`.
         ratePerKgSnapshotUgx:
             Value((r['rate_per_kg_snapshot_ugx'] as num?)?.toDouble() ?? 0),
+        // The rate-override audit (migration 0059). Null for an ordinary order
+        // and for any row predating the columns.
+        rateOverrideReason: Value(r['rate_override_reason'] as String?),
+        rateOverrideFromUgx:
+            Value((r['rate_override_from_ugx'] as num?)?.toDouble()),
         estimatedWeightKg: Value((r['estimated_weight_kg'] as num?)?.toDouble()),
         finalWeightKg: Value((r['final_weight_kg'] as num?)?.toDouble()),
         lineItems: Value(jsonEncode(r['line_items'] ?? const [])),
