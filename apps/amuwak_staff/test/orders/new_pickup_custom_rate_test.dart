@@ -77,7 +77,11 @@ void main() {
     return (order: args[0] as LaundryOrder, customer: args[1] as Customer);
   }
 
-  Future<_FormHandle> pumpFormAndOpen(WidgetTester tester) async {
+  Future<_FormHandle> pumpFormAndOpen(
+    WidgetTester tester, {
+    int minRatePctOfDefault = 0,
+    bool isManager = false,
+  }) async {
     final handle = _FormHandle();
     await tester.pumpWidget(
       MaterialApp(
@@ -99,6 +103,8 @@ void main() {
                         geolocate: () async => null,
                         reverseGeocode: (_) async => null,
                         defaultRatePerKgUgx: 5000,
+                        minRatePctOfDefault: minRatePctOfDefault,
+                        isManager: isManager,
                       ),
                     ),
                   );
@@ -253,6 +259,11 @@ void main() {
       const Offset(0, -200),
     );
     await tester.enterText(find.byKey(const Key('np_custom_rate')), '6000');
+    await tester.pump();
+    // 6000 differs from this customer's standing 4000, so it is an override and
+    // now requires a reason (migration 0059).
+    await tester.enterText(
+        find.byKey(const Key('np_rate_reason')), 'Agreed uplift');
 
     await tester.dragUntilVisible(
       find.widgetWithText(ElevatedButton, 'Create pickup'),
@@ -302,6 +313,11 @@ void main() {
       const Offset(0, -200),
     );
     await tester.enterText(find.byKey(const Key('np_custom_rate')), '4000');
+    await tester.pump();
+    // 4000 differs from the 5000 default, so it is an override and now requires
+    // a reason (migration 0059).
+    await tester.enterText(
+        find.byKey(const Key('np_rate_reason')), 'Bulk hostel deal');
 
     await tester.dragUntilVisible(
       find.widgetWithText(ElevatedButton, 'Create pickup'),
@@ -347,6 +363,9 @@ void main() {
       const Offset(0, -200),
     );
     await tester.enterText(find.byKey(const Key('np_custom_rate')), '4000.7');
+    await tester.pump();
+    await tester.enterText(
+        find.byKey(const Key('np_rate_reason')), 'Bulk hostel deal');
 
     await tester.dragUntilVisible(
       find.widgetWithText(ElevatedButton, 'Create pickup'),
@@ -363,6 +382,154 @@ void main() {
         reason: 'custom rate should be rounded on the customer');
     expect(pickup.order.ratePerKgSnapshotUgx, 4001.0,
         reason: 'order snapshot should use the rounded custom rate');
+  });
+
+  /// Fills everything a submit needs except the custom rate, leaving the form
+  /// scrolled to the optional-details section with the rate field visible.
+  Future<void> fillRequiredAndOpenOptional(WidgetTester tester) async {
+    await tester.enterText(find.byKey(const Key('np_name')), 'Jane Doe');
+    await tester.enterText(
+        find.byKey(const Key('np_phone')), '+256 700 111 222');
+    await tester.enterText(
+        find.byKey(const Key('np_address')), 'Kikoni, Kampala');
+    await tester.tap(find.byKey(const Key('np_service_type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ServiceType.washAndIron.label).last);
+    await tester.pumpAndSettle();
+    await setCount(tester, 3);
+
+    await tester.dragUntilVisible(
+      find.text('Add optional details'),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.tap(find.text('Add optional details'));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('np_custom_rate')),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+  }
+
+  Future<void> submit(WidgetTester tester) async {
+    await tester.dragUntilVisible(
+      find.widgetWithText(ElevatedButton, 'Create pickup'),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Create pickup'));
+  }
+
+  testWidgets('a typed override records what it replaced and why',
+      (tester) async {
+    await pumpFormAndOpen(tester);
+    await fillRequiredAndOpenOptional(tester);
+
+    await tester.enterText(find.byKey(const Key('np_custom_rate')), '4000');
+    await tester.pump();
+    await tester.enterText(
+        find.byKey(const Key('np_rate_reason')), 'Bulk hostel deal');
+
+    await submit(tester);
+    await tester.pumpAndSettle();
+
+    final order = capturedPickup().order;
+    expect(order.ratePerKgSnapshotUgx, 4000.0);
+    expect(order.rateOverrideFromUgx, 5000.0,
+        reason: 'the audit records the default it replaced');
+    expect(order.rateOverrideReason, 'Bulk hostel deal');
+  });
+
+  testWidgets('an order with no override leaves the audit fields null',
+      (tester) async {
+    await pumpFormAndOpen(tester);
+
+    await tester.enterText(find.byKey(const Key('np_name')), 'Jane Doe');
+    await tester.enterText(
+        find.byKey(const Key('np_phone')), '+256 700 111 222');
+    await tester.enterText(
+        find.byKey(const Key('np_address')), 'Kikoni, Kampala');
+    await tester.tap(find.byKey(const Key('np_service_type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ServiceType.washAndIron.label).last);
+    await tester.pumpAndSettle();
+    await setCount(tester, 3);
+
+    await submit(tester);
+    await tester.pumpAndSettle();
+
+    final order = capturedPickup().order;
+    expect(order.rateOverrideFromUgx, isNull);
+    expect(order.rateOverrideReason, isNull);
+  });
+
+  testWidgets('typing the rate that already applies is not an override',
+      (tester) async {
+    // 5000 IS the default, so no reason may be demanded and nothing is audited.
+    await pumpFormAndOpen(tester);
+    await fillRequiredAndOpenOptional(tester);
+
+    await tester.enterText(find.byKey(const Key('np_custom_rate')), '5000');
+    await tester.pump();
+    expect(find.byKey(const Key('np_rate_reason')), findsNothing);
+
+    await submit(tester);
+    await tester.pumpAndSettle();
+
+    final order = capturedPickup().order;
+    expect(order.ratePerKgSnapshotUgx, 5000.0);
+    expect(order.rateOverrideReason, isNull);
+    expect(order.rateOverrideFromUgx, isNull);
+  });
+
+  testWidgets('a rider cannot submit an override below the floor',
+      (tester) async {
+    // default 5000, floor 60% = 3000.
+    await pumpFormAndOpen(tester, minRatePctOfDefault: 60);
+    await fillRequiredAndOpenOptional(tester);
+
+    await tester.enterText(find.byKey(const Key('np_custom_rate')), '2000');
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('np_rate_reason')), 'Discount');
+
+    await submit(tester);
+    await tester.pump();
+
+    verifyNever(() => ordersRepo.createPickup(any(), any(),
+        actorStaffId: any(named: 'actorStaffId')));
+    expect(find.textContaining('below the minimum'), findsOneWidget);
+  });
+
+  testWidgets('a manager may go below the floor', (tester) async {
+    await pumpFormAndOpen(tester, minRatePctOfDefault: 60, isManager: true);
+    await fillRequiredAndOpenOptional(tester);
+
+    await tester.enterText(find.byKey(const Key('np_custom_rate')), '2000');
+    await tester.pump();
+    await tester.enterText(
+        find.byKey(const Key('np_rate_reason')), 'Manager approved');
+
+    await submit(tester);
+    await tester.pumpAndSettle();
+
+    expect(capturedPickup().order.ratePerKgSnapshotUgx, 2000.0);
+  });
+
+  testWidgets('an override without a reason is refused', (tester) async {
+    await pumpFormAndOpen(tester);
+    await fillRequiredAndOpenOptional(tester);
+
+    await tester.enterText(find.byKey(const Key('np_custom_rate')), '4000');
+    await tester.pump();
+    // Reason deliberately left blank.
+
+    await submit(tester);
+    await tester.pump();
+
+    verifyNever(() => ordersRepo.createPickup(any(), any(),
+        actorStaffId: any(named: 'actorStaffId')));
+    expect(find.textContaining('Say why'), findsOneWidget);
   });
 }
 
