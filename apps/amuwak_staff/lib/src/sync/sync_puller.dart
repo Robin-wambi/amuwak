@@ -264,6 +264,12 @@ class SyncPuller {
         itemCount: r['item_count'] as int,
         notes: Value(r['notes'] as String? ?? ''),
         scheduledFor: Value(_dtNullable(r['scheduled_for'])),
+        // The promised ready-for-collection date (migration 0058). Carried for
+        // the same reason as the pricing columns below: this mapper is the only
+        // server→local path for orders, so omitting it silently dropped a
+        // promise made in the shop or on another device.
+        expectedCollectionAt:
+            Value(_dtNullable(r['expected_collection_at'])),
         assignedDriver: Value(r['assigned_driver'] as String?),
         intakeRecordedBy: r['intake_recorded_by'] as String,
         createdBy: r['created_by'] as String,
