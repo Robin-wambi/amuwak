@@ -817,5 +817,23 @@ void main() {
       expect(restated.totalUgx, 51000, reason: 'insertOrReplace, not ignore');
       expect(restated.finalWeightKg, 8);
     });
+
+    test('carries the rate-override audit so staff can see why a price differs',
+        () async {
+      final stored = await pullOrder(pricedRow(overrides: {
+        'rate_override_reason': 'Bulk hostel deal',
+        'rate_override_from_ugx': 6000,
+      }));
+
+      expect(stored.rateOverrideReason, 'Bulk hostel deal');
+      expect(stored.rateOverrideFromUgx, 6000);
+    });
+
+    test('an ordinary pulled order has no override recorded', () async {
+      final stored = await pullOrder(pricedRow());
+
+      expect(stored.rateOverrideReason, isNull);
+      expect(stored.rateOverrideFromUgx, isNull);
+    });
   });
 }
