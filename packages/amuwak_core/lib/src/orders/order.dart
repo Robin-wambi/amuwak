@@ -329,6 +329,9 @@ class LaundryOrder {
     bool clearExpectedCollectionAt = false,
     List<ProofEvent>? proofEvents,
     double? ratePerKgSnapshotUgx,
+    // No clearRateOverride*: unlike scheduledFor/expectedCollectionAt/the
+    // weights below, this pair is a permanent audit record set once at order
+    // creation (new_pickup_screen.dart) and never revised afterwards.
     String? rateOverrideReason,
     double? rateOverrideFromUgx,
     double? estimatedWeightKg,
