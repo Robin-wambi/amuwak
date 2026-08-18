@@ -10,7 +10,7 @@
 BEGIN;
 SET search_path TO extensions, public;
 
-SELECT plan(9);
+SELECT plan(10);
 
 -- ---- Structure ----
 
