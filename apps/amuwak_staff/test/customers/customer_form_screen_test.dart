@@ -242,6 +242,28 @@ void main() {
     expect(saved!.customRatePerKgUgx, 4001.0);
   });
 
+  testWidgets('refuses a rate that is not a usable number', (tester) async {
+    useTallViewport(tester);
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: CustomerFormScreen(
+        save: (c) async => calls++,
+        existing: _customer(id: 'keep-id', name: 'Ada', phone: '0700123456'),
+        canEditRate: true,
+        defaultRatePerKgUgx: 5000,
+      ),
+    ));
+
+    // Distinct from an empty field, which clears the override: a typed value
+    // that cannot become a positive rate is a mistake, not an instruction.
+    await tester.enterText(find.byKey(const Key('customer_rate')), '0');
+    await tester.tap(find.byKey(const Key('customer_save')));
+    await tester.pump();
+
+    expect(calls, 0);
+    expect(find.textContaining('greater than 0'), findsOneWidget);
+  });
+
   testWidgets('refuses a rate below the configured floor', (tester) async {
     useTallViewport(tester);
     var calls = 0;
