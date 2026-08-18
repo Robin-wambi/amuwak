@@ -241,6 +241,8 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
             geolocate: createDefaultGeolocate(),
             reverseGeocode: createDefaultReverseGeocode(),
             defaultRatePerKgUgx: settings.defaultRatePerKgUgx,
+            minRatePctOfDefault: settings.minRatePctOfDefault,
+            isManager: ref.read(currentRoleProvider) == 'manager',
             deliveryFeeUgx: settings.deliveryFeeUgx,
             expressFlatUgx: settings.expressFlatUgx,
             expressPct: settings.expressPct,
@@ -633,6 +635,11 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
   /// can reject a phone that duplicates an existing record. [existing] edits.
   Future<void> _openCustomerForm({Customer? existing}) async {
     final repo = ref.read(customersRepositoryProvider);
+    // Null settings degrade to a disabled floor and no default-rate hint: the
+    // form still saves, it just can't show or enforce a floor — the same way
+    // the rest of this screen treats an unloaded settings row.
+    final settings = ref.read(pricingSettingsProvider).valueOrNull;
+    final canEditRate = ref.read(currentRoleProvider) == 'manager';
     var existingCustomers = const <Customer>[];
     try {
       existingCustomers = await repo.getAll();
@@ -646,6 +653,9 @@ class _StaffDashboardScreenState extends ConsumerState<StaffDashboardScreen> {
           save: repo.upsertCustomer,
           existing: existing,
           existingCustomers: existingCustomers,
+          canEditRate: canEditRate,
+          defaultRatePerKgUgx: settings?.defaultRatePerKgUgx ?? 0,
+          minRatePctOfDefault: settings?.minRatePctOfDefault ?? 0,
         ),
       ),
     );
