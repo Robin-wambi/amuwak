@@ -23,6 +23,8 @@ class LaundryOrder {
     this.expectedCollectionAt,
     this.proofEvents = const [],
     this.ratePerKgSnapshotUgx = 0,
+    this.rateOverrideReason,
+    this.rateOverrideFromUgx,
     this.estimatedWeightKg,
     this.finalWeightKg,
     this.lineItems = const [],
@@ -57,6 +59,17 @@ class LaundryOrder {
   final DateTime? expectedCollectionAt;
   final List<ProofEvent> proofEvents;
   final double ratePerKgSnapshotUgx;
+
+  /// Why this order was billed at a rate other than the one that would
+  /// otherwise apply. Null on the overwhelming majority of orders.
+  final String? rateOverrideReason;
+
+  /// The rate that would have applied without the override — the customer's
+  /// standing rate, or the global default. Null when no override was made.
+  /// Stored so the audit is readable without re-deriving what pricing looked
+  /// like at the time. See Supabase migration 0059.
+  final double? rateOverrideFromUgx;
+
   final double? estimatedWeightKg;
   final double? finalWeightKg;
   final List<LineItem> lineItems;
@@ -193,6 +206,10 @@ class LaundryOrder {
       // the pricing columns being added/backfilled.)
       ratePerKgSnapshotUgx:
           (row['rate_per_kg_snapshot_ugx'] as num?)?.toDouble() ?? 0,
+      // Null on an ordinary order, and on any row predating 0059 — an override
+      // is the exception, so "absent" and "not overridden" read the same.
+      rateOverrideReason: row['rate_override_reason'] as String?,
+      rateOverrideFromUgx: (row['rate_override_from_ugx'] as num?)?.toDouble(),
       estimatedWeightKg: (row['estimated_weight_kg'] as num?)?.toDouble(),
       finalWeightKg: (row['final_weight_kg'] as num?)?.toDouble(),
       lineItems: _parseLineItems(row['line_items']),
@@ -312,6 +329,8 @@ class LaundryOrder {
     bool clearExpectedCollectionAt = false,
     List<ProofEvent>? proofEvents,
     double? ratePerKgSnapshotUgx,
+    String? rateOverrideReason,
+    double? rateOverrideFromUgx,
     double? estimatedWeightKg,
     double? finalWeightKg,
     List<LineItem>? lineItems,
@@ -347,6 +366,8 @@ class LaundryOrder {
           : (expectedCollectionAt ?? this.expectedCollectionAt),
       proofEvents: proofEvents ?? this.proofEvents,
       ratePerKgSnapshotUgx: ratePerKgSnapshotUgx ?? this.ratePerKgSnapshotUgx,
+      rateOverrideReason: rateOverrideReason ?? this.rateOverrideReason,
+      rateOverrideFromUgx: rateOverrideFromUgx ?? this.rateOverrideFromUgx,
       estimatedWeightKg: clearEstimatedWeight
           ? null
           : (estimatedWeightKg ?? this.estimatedWeightKg),
@@ -386,6 +407,8 @@ class LaundryOrder {
         other.scheduledFor != scheduledFor ||
         other.expectedCollectionAt != expectedCollectionAt ||
         other.ratePerKgSnapshotUgx != ratePerKgSnapshotUgx ||
+        other.rateOverrideReason != rateOverrideReason ||
+        other.rateOverrideFromUgx != rateOverrideFromUgx ||
         other.estimatedWeightKg != estimatedWeightKg ||
         other.finalWeightKg != finalWeightKg ||
         other.manualAdjustmentUgx != manualAdjustmentUgx ||
@@ -434,6 +457,8 @@ class LaundryOrder {
         // 20-argument limit.
         Object.hash(
           ratePerKgSnapshotUgx,
+          rateOverrideReason,
+          rateOverrideFromUgx,
           estimatedWeightKg,
           finalWeightKg,
           Object.hashAll(lineItems),
