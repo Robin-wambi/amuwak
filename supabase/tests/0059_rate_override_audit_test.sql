@@ -10,7 +10,7 @@
 BEGIN;
 SET search_path TO extensions, public;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- ---- Structure ----
 
@@ -54,6 +54,15 @@ SELECT throws_like($$
     '{"id":"00000000-0000-0000-0000-0000000059a1","customer_name":"Low","phone":"+256700590001","address":"Kikoni","service_type":"wash_fold","item_count":3,"rate_per_kg_snapshot_ugx":2000}'::jsonb
   )
 $$, '%rate_below_floor%', 'a driver cannot create a pickup priced below the floor');
+
+-- A rate of exactly 0 is not exempt from the floor: nothing about billing at
+-- 0 makes it any less "below the floor" than an ordinary low rate.
+SELECT throws_like($$
+  SELECT create_pickup(
+    '{"id":"00000000-0000-0000-0000-0000000059c4","name":"Zero","phone":"+256700590004"}'::jsonb,
+    '{"id":"00000000-0000-0000-0000-0000000059a4","customer_name":"Zero","phone":"+256700590004","address":"Kikoni","service_type":"wash_fold","item_count":3,"rate_per_kg_snapshot_ugx":0}'::jsonb
+  )
+$$, '%rate_below_floor%', 'a driver cannot create a pickup priced at 0 when a floor is set');
 
 -- A rate at the floor is allowed, and the audit columns round-trip through the
 -- RPC's explicit INSERT column list (the failure mode 0058 documents: a column

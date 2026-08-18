@@ -55,8 +55,11 @@ BEGIN
     RAISE EXCEPTION 'create_pickup requires customer id and order id';
   END IF;
 
-  -- Rate floor. Managers are exempt; 0 or no settings row disables it.
-  IF v_role <> 'manager' AND v_rate > 0 THEN
+  -- Rate floor. Managers are exempt; 0 or no settings row disables it. Checked
+  -- for a zero rate too: nothing about billing at 0 makes it exempt from the
+  -- floor, and this RPC is reachable by any authenticated staff caller, not
+  -- only through the app (which never sends 0 today).
+  IF v_role <> 'manager' THEN
     SELECT default_rate_per_kg_ugx * min_rate_pct_of_default / 100.0
       INTO v_floor FROM pricing_settings LIMIT 1;
     IF v_floor IS NOT NULL AND v_floor > 0 AND v_rate < v_floor THEN
