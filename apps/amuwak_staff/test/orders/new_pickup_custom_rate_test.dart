@@ -516,6 +516,45 @@ void main() {
     expect(capturedPickup().order.ratePerKgSnapshotUgx, 2000.0);
   });
 
+  testWidgets(
+      "a returning customer's standing rate below the floor is refused even "
+      'with no typed override', (tester) async {
+    // The floor (60% of 5000 = 3000) was raised after this customer's 2000
+    // standing rate was set — no override is typed, so this must not reach
+    // create_pickup's own floor check and dead-letter in the outbox.
+    when(() => customersRepo.getAll()).thenAnswer((_) async => [
+          _customer(
+            id: 'returning-cust-1',
+            name: 'Low Rate',
+            phone: '+256 700 555 666',
+            address: 'Ntinda, Kampala',
+            customRatePerKgUgx: 2000,
+          ),
+        ]);
+    await pumpFormAndOpen(tester, minRatePctOfDefault: 60);
+
+    await tester.enterText(
+        find.byKey(const Key('np_phone')), '+256 700 555 666');
+    await tester.tap(find.byKey(const Key('np_name')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use this customer'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('np_service_type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ServiceType.washAndIron.label).last);
+    await tester.pumpAndSettle();
+    await setCount(tester, 3);
+
+    // Custom-rate field left blank: this customer's own standing rate applies.
+    await submit(tester);
+    await tester.pump();
+
+    verifyNever(() => ordersRepo.createPickup(any(), any(),
+        actorStaffId: any(named: 'actorStaffId')));
+    expect(find.textContaining('below the minimum'), findsOneWidget);
+  });
+
   testWidgets('an override without a reason is refused', (tester) async {
     await pumpFormAndOpen(tester);
     await fillRequiredAndOpenOptional(tester);

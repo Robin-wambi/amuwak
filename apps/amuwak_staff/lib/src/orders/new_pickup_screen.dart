@@ -492,33 +492,36 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
       );
       return;
     }
-    // An override must say why, and must clear the floor. Both are checked
-    // before anything is written or queued, so the rider is told now rather
-    // than after the outbox is rejected by create_pickup's own floor check.
+    // An override must say why. Checked before anything is written or queued,
+    // so the rider is told now rather than after the outbox is rejected by
+    // create_pickup's own floor check.
     final reason = _rateReasonController.text.trim();
-    if (_isOverride) {
-      if (reason.isEmpty) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Say why this order is priced differently.'),
-        ));
-        return;
-      }
-      final floor = rateFloorUgx(
-        defaultRateUgx: widget.defaultRatePerKgUgx,
-        minRatePct: widget.minRatePctOfDefault,
-      );
-      // customRate is non-null here: _isOverride is only true when _typedRate
-      // is non-null, and both parse the same field by the same rounding rule.
-      if (!isRateAllowed(
-          rateUgx: customRate!, floorUgx: floor, isManager: widget.isManager)) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('That is below the minimum of ${formatUgx(floor)}/kg. '
-              'A manager can approve it.'),
-        ));
-        return;
-      }
+    if (_isOverride && reason.isEmpty) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Say why this order is priced differently.'),
+      ));
+      return;
+    }
+    // The floor applies to whatever rate the order actually bills at, not
+    // only a typed override: a returning customer's standing rate can itself
+    // sit below a floor raised after that rate was set, and that must surface
+    // here rather than as a silent outbox dead-letter from create_pickup's own
+    // floor check.
+    final floor = rateFloorUgx(
+      defaultRateUgx: widget.defaultRatePerKgUgx,
+      minRatePct: widget.minRatePctOfDefault,
+    );
+    if (!isRateAllowed(
+        rateUgx: customRate ?? _resolvedRate,
+        floorUgx: floor,
+        isManager: widget.isManager)) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('That is below the minimum of ${formatUgx(floor)}/kg. '
+            'A manager can approve it.'),
+      ));
+      return;
     }
     final customerId =
         _matchedCustomerId ??
