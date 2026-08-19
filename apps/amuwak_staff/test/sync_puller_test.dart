@@ -817,5 +817,39 @@ void main() {
       expect(restated.totalUgx, 51000, reason: 'insertOrReplace, not ignore');
       expect(restated.finalWeightKg, 8);
     });
+
+    test('carries the rate-override audit so staff can see why a price differs',
+        () async {
+      final stored = await pullOrder(pricedRow(overrides: {
+        'rate_override_reason': 'Bulk hostel deal',
+        'rate_override_from_ugx': 6000,
+      }));
+
+      expect(stored.rateOverrideReason, 'Bulk hostel deal');
+      expect(stored.rateOverrideFromUgx, 6000);
+    });
+
+    test('an ordinary pulled order has no override recorded', () async {
+      final stored = await pullOrder(pricedRow());
+
+      expect(stored.rateOverrideReason, isNull);
+      expect(stored.rateOverrideFromUgx, isNull);
+    });
+
+    test('carries the promised collection date (migration 0058)', () async {
+      // Regression: the mapper carried scheduled_for but never
+      // expected_collection_at, so a collection date promised in the shop (or
+      // edited on another device) was dropped on the way back to this one and
+      // the order read as having no promise at all.
+      final stored = await pullOrder(pricedRow(overrides: {
+        'expected_collection_at': '2026-07-30T00:00:00Z',
+      }));
+
+      expect(stored.expectedCollectionAt, DateTime.utc(2026, 7, 30));
+    });
+
+    test('an order with no promised collection date stays null', () async {
+      expect((await pullOrder(pricedRow())).expectedCollectionAt, isNull);
+    });
   });
 }

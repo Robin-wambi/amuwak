@@ -11,6 +11,7 @@ class PricingSettings {
     this.expressFlatUgx = 0,
     this.expressPct = 0,
     this.freeDeliveryThresholdUgx = 0,
+    this.minRatePctOfDefault = 0,
   });
 
   final String id;
@@ -32,6 +33,12 @@ class PricingSettings {
   /// 0 disables the free-delivery threshold. Fed into the cart estimate.
   final int freeDeliveryThresholdUgx;
 
+  /// Floor for a per-order rate override, as a whole percentage of
+  /// [defaultRatePerKgUgx]. 0 disables it. Managers are exempt — see
+  /// [isRateAllowed]. Enforced for real inside the `create_pickup` RPC;
+  /// the client check is UX only. See Supabase migration 0059.
+  final int minRatePctOfDefault;
+
   /// Reads the singleton row. The delivery/express columns degrade to 0 for a
   /// row that predates them being added/backfilled (mirrors the order snapshot's
   /// null-degrade), so a missing column can never error the settings read.
@@ -47,6 +54,8 @@ class PricingSettings {
         expressPct: (r['express_surcharge_pct'] as num?)?.toDouble() ?? 0,
         freeDeliveryThresholdUgx:
             (r['free_delivery_threshold_ugx'] as num?)?.toInt() ?? 0,
+        minRatePctOfDefault:
+            (r['min_rate_pct_of_default'] as num?)?.toInt() ?? 0,
       );
 
   PricingSettings copyWith({
@@ -55,6 +64,7 @@ class PricingSettings {
     int? expressFlatUgx,
     double? expressPct,
     int? freeDeliveryThresholdUgx,
+    int? minRatePctOfDefault,
   }) =>
       PricingSettings(
         id: id,
@@ -66,5 +76,7 @@ class PricingSettings {
         expressPct: expressPct ?? this.expressPct,
         freeDeliveryThresholdUgx:
             freeDeliveryThresholdUgx ?? this.freeDeliveryThresholdUgx,
+        minRatePctOfDefault:
+            minRatePctOfDefault ?? this.minRatePctOfDefault,
       );
 }

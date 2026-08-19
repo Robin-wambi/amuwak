@@ -1443,6 +1443,28 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
         requiredDuringInsert: false,
         defaultValue: const Constant(0),
       );
+  static const VerificationMeta _rateOverrideReasonMeta =
+      const VerificationMeta('rateOverrideReason');
+  @override
+  late final GeneratedColumn<String> rateOverrideReason =
+      GeneratedColumn<String>(
+        'rate_override_reason',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _rateOverrideFromUgxMeta =
+      const VerificationMeta('rateOverrideFromUgx');
+  @override
+  late final GeneratedColumn<double> rateOverrideFromUgx =
+      GeneratedColumn<double>(
+        'rate_override_from_ugx',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _estimatedWeightKgMeta = const VerificationMeta(
     'estimatedWeightKg',
   );
@@ -1599,6 +1621,8 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
     updatedAt,
     deletedAt,
     ratePerKgSnapshotUgx,
+    rateOverrideReason,
+    rateOverrideFromUgx,
     estimatedWeightKg,
     finalWeightKg,
     lineItems,
@@ -1809,6 +1833,24 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
         ),
       );
     }
+    if (data.containsKey('rate_override_reason')) {
+      context.handle(
+        _rateOverrideReasonMeta,
+        rateOverrideReason.isAcceptableOrUnknown(
+          data['rate_override_reason']!,
+          _rateOverrideReasonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('rate_override_from_ugx')) {
+      context.handle(
+        _rateOverrideFromUgxMeta,
+        rateOverrideFromUgx.isAcceptableOrUnknown(
+          data['rate_override_from_ugx']!,
+          _rateOverrideFromUgxMeta,
+        ),
+      );
+    }
     if (data.containsKey('estimated_weight_kg')) {
       context.handle(
         _estimatedWeightKgMeta,
@@ -1997,6 +2039,14 @@ class $OrdersTable extends Orders with TableInfo<$OrdersTable, Order> {
         DriftSqlType.double,
         data['${effectivePrefix}rate_per_kg_snapshot_ugx'],
       )!,
+      rateOverrideReason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rate_override_reason'],
+      ),
+      rateOverrideFromUgx: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rate_override_from_ugx'],
+      ),
       estimatedWeightKg: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}estimated_weight_kg'],
@@ -2074,6 +2124,8 @@ class Order extends DataClass implements Insertable<Order> {
   final DateTime updatedAt;
   final DateTime? deletedAt;
   final double ratePerKgSnapshotUgx;
+  final String? rateOverrideReason;
+  final double? rateOverrideFromUgx;
   final double? estimatedWeightKg;
   final double? finalWeightKg;
   final String lineItems;
@@ -2109,6 +2161,8 @@ class Order extends DataClass implements Insertable<Order> {
     required this.updatedAt,
     this.deletedAt,
     required this.ratePerKgSnapshotUgx,
+    this.rateOverrideReason,
+    this.rateOverrideFromUgx,
     this.estimatedWeightKg,
     this.finalWeightKg,
     required this.lineItems,
@@ -2161,6 +2215,12 @@ class Order extends DataClass implements Insertable<Order> {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
     }
     map['rate_per_kg_snapshot_ugx'] = Variable<double>(ratePerKgSnapshotUgx);
+    if (!nullToAbsent || rateOverrideReason != null) {
+      map['rate_override_reason'] = Variable<String>(rateOverrideReason);
+    }
+    if (!nullToAbsent || rateOverrideFromUgx != null) {
+      map['rate_override_from_ugx'] = Variable<double>(rateOverrideFromUgx);
+    }
     if (!nullToAbsent || estimatedWeightKg != null) {
       map['estimated_weight_kg'] = Variable<double>(estimatedWeightKg);
     }
@@ -2218,6 +2278,12 @@ class Order extends DataClass implements Insertable<Order> {
           ? const Value.absent()
           : Value(deletedAt),
       ratePerKgSnapshotUgx: Value(ratePerKgSnapshotUgx),
+      rateOverrideReason: rateOverrideReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rateOverrideReason),
+      rateOverrideFromUgx: rateOverrideFromUgx == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rateOverrideFromUgx),
       estimatedWeightKg: estimatedWeightKg == null && nullToAbsent
           ? const Value.absent()
           : Value(estimatedWeightKg),
@@ -2268,6 +2334,12 @@ class Order extends DataClass implements Insertable<Order> {
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       ratePerKgSnapshotUgx: serializer.fromJson<double>(
         json['ratePerKgSnapshotUgx'],
+      ),
+      rateOverrideReason: serializer.fromJson<String?>(
+        json['rateOverrideReason'],
+      ),
+      rateOverrideFromUgx: serializer.fromJson<double?>(
+        json['rateOverrideFromUgx'],
       ),
       estimatedWeightKg: serializer.fromJson<double?>(
         json['estimatedWeightKg'],
@@ -2321,6 +2393,8 @@ class Order extends DataClass implements Insertable<Order> {
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'ratePerKgSnapshotUgx': serializer.toJson<double>(ratePerKgSnapshotUgx),
+      'rateOverrideReason': serializer.toJson<String?>(rateOverrideReason),
+      'rateOverrideFromUgx': serializer.toJson<double?>(rateOverrideFromUgx),
       'estimatedWeightKg': serializer.toJson<double?>(estimatedWeightKg),
       'finalWeightKg': serializer.toJson<double?>(finalWeightKg),
       'lineItems': serializer.toJson<String>(lineItems),
@@ -2359,6 +2433,8 @@ class Order extends DataClass implements Insertable<Order> {
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
     double? ratePerKgSnapshotUgx,
+    Value<String?> rateOverrideReason = const Value.absent(),
+    Value<double?> rateOverrideFromUgx = const Value.absent(),
     Value<double?> estimatedWeightKg = const Value.absent(),
     Value<double?> finalWeightKg = const Value.absent(),
     String? lineItems,
@@ -2398,6 +2474,12 @@ class Order extends DataClass implements Insertable<Order> {
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     ratePerKgSnapshotUgx: ratePerKgSnapshotUgx ?? this.ratePerKgSnapshotUgx,
+    rateOverrideReason: rateOverrideReason.present
+        ? rateOverrideReason.value
+        : this.rateOverrideReason,
+    rateOverrideFromUgx: rateOverrideFromUgx.present
+        ? rateOverrideFromUgx.value
+        : this.rateOverrideFromUgx,
     estimatedWeightKg: estimatedWeightKg.present
         ? estimatedWeightKg.value
         : this.estimatedWeightKg,
@@ -2461,6 +2543,12 @@ class Order extends DataClass implements Insertable<Order> {
       ratePerKgSnapshotUgx: data.ratePerKgSnapshotUgx.present
           ? data.ratePerKgSnapshotUgx.value
           : this.ratePerKgSnapshotUgx,
+      rateOverrideReason: data.rateOverrideReason.present
+          ? data.rateOverrideReason.value
+          : this.rateOverrideReason,
+      rateOverrideFromUgx: data.rateOverrideFromUgx.present
+          ? data.rateOverrideFromUgx.value
+          : this.rateOverrideFromUgx,
       estimatedWeightKg: data.estimatedWeightKg.present
           ? data.estimatedWeightKg.value
           : this.estimatedWeightKg,
@@ -2515,6 +2603,8 @@ class Order extends DataClass implements Insertable<Order> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('ratePerKgSnapshotUgx: $ratePerKgSnapshotUgx, ')
+          ..write('rateOverrideReason: $rateOverrideReason, ')
+          ..write('rateOverrideFromUgx: $rateOverrideFromUgx, ')
           ..write('estimatedWeightKg: $estimatedWeightKg, ')
           ..write('finalWeightKg: $finalWeightKg, ')
           ..write('lineItems: $lineItems, ')
@@ -2555,6 +2645,8 @@ class Order extends DataClass implements Insertable<Order> {
     updatedAt,
     deletedAt,
     ratePerKgSnapshotUgx,
+    rateOverrideReason,
+    rateOverrideFromUgx,
     estimatedWeightKg,
     finalWeightKg,
     lineItems,
@@ -2594,6 +2686,8 @@ class Order extends DataClass implements Insertable<Order> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.ratePerKgSnapshotUgx == this.ratePerKgSnapshotUgx &&
+          other.rateOverrideReason == this.rateOverrideReason &&
+          other.rateOverrideFromUgx == this.rateOverrideFromUgx &&
           other.estimatedWeightKg == this.estimatedWeightKg &&
           other.finalWeightKg == this.finalWeightKg &&
           other.lineItems == this.lineItems &&
@@ -2631,6 +2725,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<double> ratePerKgSnapshotUgx;
+  final Value<String?> rateOverrideReason;
+  final Value<double?> rateOverrideFromUgx;
   final Value<double?> estimatedWeightKg;
   final Value<double?> finalWeightKg;
   final Value<String> lineItems;
@@ -2667,6 +2763,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.ratePerKgSnapshotUgx = const Value.absent(),
+    this.rateOverrideReason = const Value.absent(),
+    this.rateOverrideFromUgx = const Value.absent(),
     this.estimatedWeightKg = const Value.absent(),
     this.finalWeightKg = const Value.absent(),
     this.lineItems = const Value.absent(),
@@ -2704,6 +2802,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.ratePerKgSnapshotUgx = const Value.absent(),
+    this.rateOverrideReason = const Value.absent(),
+    this.rateOverrideFromUgx = const Value.absent(),
     this.estimatedWeightKg = const Value.absent(),
     this.finalWeightKg = const Value.absent(),
     this.lineItems = const Value.absent(),
@@ -2752,6 +2852,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<double>? ratePerKgSnapshotUgx,
+    Expression<String>? rateOverrideReason,
+    Expression<double>? rateOverrideFromUgx,
     Expression<double>? estimatedWeightKg,
     Expression<double>? finalWeightKg,
     Expression<String>? lineItems,
@@ -2791,6 +2893,10 @@ class OrdersCompanion extends UpdateCompanion<Order> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (ratePerKgSnapshotUgx != null)
         'rate_per_kg_snapshot_ugx': ratePerKgSnapshotUgx,
+      if (rateOverrideReason != null)
+        'rate_override_reason': rateOverrideReason,
+      if (rateOverrideFromUgx != null)
+        'rate_override_from_ugx': rateOverrideFromUgx,
       if (estimatedWeightKg != null) 'estimated_weight_kg': estimatedWeightKg,
       if (finalWeightKg != null) 'final_weight_kg': finalWeightKg,
       if (lineItems != null) 'line_items': lineItems,
@@ -2834,6 +2940,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<double>? ratePerKgSnapshotUgx,
+    Value<String?>? rateOverrideReason,
+    Value<double?>? rateOverrideFromUgx,
     Value<double?>? estimatedWeightKg,
     Value<double?>? finalWeightKg,
     Value<String>? lineItems,
@@ -2871,6 +2979,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       ratePerKgSnapshotUgx: ratePerKgSnapshotUgx ?? this.ratePerKgSnapshotUgx,
+      rateOverrideReason: rateOverrideReason ?? this.rateOverrideReason,
+      rateOverrideFromUgx: rateOverrideFromUgx ?? this.rateOverrideFromUgx,
       estimatedWeightKg: estimatedWeightKg ?? this.estimatedWeightKg,
       finalWeightKg: finalWeightKg ?? this.finalWeightKg,
       lineItems: lineItems ?? this.lineItems,
@@ -2964,6 +3074,14 @@ class OrdersCompanion extends UpdateCompanion<Order> {
         ratePerKgSnapshotUgx.value,
       );
     }
+    if (rateOverrideReason.present) {
+      map['rate_override_reason'] = Variable<String>(rateOverrideReason.value);
+    }
+    if (rateOverrideFromUgx.present) {
+      map['rate_override_from_ugx'] = Variable<double>(
+        rateOverrideFromUgx.value,
+      );
+    }
     if (estimatedWeightKg.present) {
       map['estimated_weight_kg'] = Variable<double>(estimatedWeightKg.value);
     }
@@ -3033,6 +3151,8 @@ class OrdersCompanion extends UpdateCompanion<Order> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('ratePerKgSnapshotUgx: $ratePerKgSnapshotUgx, ')
+          ..write('rateOverrideReason: $rateOverrideReason, ')
+          ..write('rateOverrideFromUgx: $rateOverrideFromUgx, ')
           ..write('estimatedWeightKg: $estimatedWeightKg, ')
           ..write('finalWeightKg: $finalWeightKg, ')
           ..write('lineItems: $lineItems, ')
@@ -8869,6 +8989,8 @@ typedef $$OrdersTableCreateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<double> ratePerKgSnapshotUgx,
+      Value<String?> rateOverrideReason,
+      Value<double?> rateOverrideFromUgx,
       Value<double?> estimatedWeightKg,
       Value<double?> finalWeightKg,
       Value<String> lineItems,
@@ -8907,6 +9029,8 @@ typedef $$OrdersTableUpdateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
       Value<double> ratePerKgSnapshotUgx,
+      Value<String?> rateOverrideReason,
+      Value<double?> rateOverrideFromUgx,
       Value<double?> estimatedWeightKg,
       Value<double?> finalWeightKg,
       Value<String> lineItems,
@@ -9042,6 +9166,16 @@ class $$OrdersTableFilterComposer
 
   ColumnFilters<double> get ratePerKgSnapshotUgx => $composableBuilder(
     column: $table.ratePerKgSnapshotUgx,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rateOverrideReason => $composableBuilder(
+    column: $table.rateOverrideReason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get rateOverrideFromUgx => $composableBuilder(
+    column: $table.rateOverrideFromUgx,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9225,6 +9359,16 @@ class $$OrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get rateOverrideReason => $composableBuilder(
+    column: $table.rateOverrideReason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get rateOverrideFromUgx => $composableBuilder(
+    column: $table.rateOverrideFromUgx,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get estimatedWeightKg => $composableBuilder(
     column: $table.estimatedWeightKg,
     builder: (column) => ColumnOrderings(column),
@@ -9379,6 +9523,16 @@ class $$OrdersTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get rateOverrideReason => $composableBuilder(
+    column: $table.rateOverrideReason,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get rateOverrideFromUgx => $composableBuilder(
+    column: $table.rateOverrideFromUgx,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get estimatedWeightKg => $composableBuilder(
     column: $table.estimatedWeightKg,
     builder: (column) => column,
@@ -9478,6 +9632,8 @@ class $$OrdersTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<double> ratePerKgSnapshotUgx = const Value.absent(),
+                Value<String?> rateOverrideReason = const Value.absent(),
+                Value<double?> rateOverrideFromUgx = const Value.absent(),
                 Value<double?> estimatedWeightKg = const Value.absent(),
                 Value<double?> finalWeightKg = const Value.absent(),
                 Value<String> lineItems = const Value.absent(),
@@ -9514,6 +9670,8 @@ class $$OrdersTableTableManager
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 ratePerKgSnapshotUgx: ratePerKgSnapshotUgx,
+                rateOverrideReason: rateOverrideReason,
+                rateOverrideFromUgx: rateOverrideFromUgx,
                 estimatedWeightKg: estimatedWeightKg,
                 finalWeightKg: finalWeightKg,
                 lineItems: lineItems,
@@ -9552,6 +9710,8 @@ class $$OrdersTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<double> ratePerKgSnapshotUgx = const Value.absent(),
+                Value<String?> rateOverrideReason = const Value.absent(),
+                Value<double?> rateOverrideFromUgx = const Value.absent(),
                 Value<double?> estimatedWeightKg = const Value.absent(),
                 Value<double?> finalWeightKg = const Value.absent(),
                 Value<String> lineItems = const Value.absent(),
@@ -9588,6 +9748,8 @@ class $$OrdersTableTableManager
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 ratePerKgSnapshotUgx: ratePerKgSnapshotUgx,
+                rateOverrideReason: rateOverrideReason,
+                rateOverrideFromUgx: rateOverrideFromUgx,
                 estimatedWeightKg: estimatedWeightKg,
                 finalWeightKg: finalWeightKg,
                 lineItems: lineItems,

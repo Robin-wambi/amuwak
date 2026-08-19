@@ -18,6 +18,9 @@ class CustomerFormScreen extends StatefulWidget {
     this.existingCustomers = const [],
     this.idGenerator = defaultUuidV7,
     this.clock = _defaultClock,
+    this.canEditRate = false,
+    this.defaultRatePerKgUgx = 0,
+    this.minRatePctOfDefault = 0,
   });
 
   final SaveCustomerFn save;
@@ -25,6 +28,18 @@ class CustomerFormScreen extends StatefulWidget {
   final List<Customer> existingCustomers;
   final String Function() idGenerator;
   final DateTime Function() clock;
+
+  /// Whether this user may set the customer's standing per-kg rate. Manager-only
+  /// — narrower than the {in_shop, manager} gate on creating customers at all,
+  /// because this is a pricing decision rather than a CRM one. Defaults to
+  /// false so a caller that doesn't pass it can never widen access by accident.
+  final bool canEditRate;
+
+  /// The global default, shown in the field's label when no override is set.
+  final double defaultRatePerKgUgx;
+
+  /// Floor as a whole percentage of [defaultRatePerKgUgx]; 0 disables it.
+  final int minRatePctOfDefault;
 
   static DateTime _defaultClock() => DateTime.now();
 
@@ -41,6 +56,9 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       TextEditingController(text: widget.existing?.address ?? '');
   late final _notesController =
       TextEditingController(text: widget.existing?.notes ?? '');
+  late final _rateController = TextEditingController(
+    text: widget.existing?.customRatePerKgUgx?.round().toString() ?? '',
+  );
   bool _saving = false;
 
   bool get _isEdit => widget.existing != null;
@@ -68,6 +86,36 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       return;
     }
 
+    // An emptied field clears the override; a filled one is rounded to whole
+    // shillings, matching how New Pickup and the settings screen persist rates.
+    double? rate = widget.existing?.customRatePerKgUgx;
+    if (widget.canEditRate) {
+      final raw = _rateController.text.trim();
+      if (raw.isEmpty) {
+        rate = null;
+      } else {
+        final parsed = double.tryParse(raw)?.roundToDouble();
+        if (parsed == null || parsed <= 0) {
+          _showError(
+              'Enter a rate greater than 0, or clear it to use the default.');
+          return;
+        }
+        final floor = rateFloorUgx(
+          defaultRateUgx: widget.defaultRatePerKgUgx,
+          minRatePct: widget.minRatePctOfDefault,
+        );
+        // isManager: false — this form is only reachable by a manager, so the
+        // floor it shows is the one riders will be held to. A manager who needs
+        // to go lower changes the floor, which is an auditable settings change
+        // rather than a silent per-customer exception.
+        if (!isRateAllowed(rateUgx: parsed, floorUgx: floor, isManager: false)) {
+          _showError('That is below the minimum of ${formatUgx(floor)}/kg.');
+          return;
+        }
+        rate = parsed;
+      }
+    }
+
     final now = widget.clock();
     final address = _addressController.text.trim();
     final notes = _notesController.text.trim();
@@ -77,9 +125,10 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       phone: phone,
       address: address.isEmpty ? null : address,
       notes: notes.isEmpty ? null : notes,
-      // Editing never touches the standing per-kg rate here; it's managed from
-      // pricing. A brand-new customer starts without an override.
-      customRatePerKgUgx: widget.existing?.customRatePerKgUgx,
+      // A manager may set or clear the standing rate here; anyone else leaves it
+      // exactly as found. Before migration 0059 this was pinned, which meant a
+      // rate set at customer creation could never be changed again.
+      customRatePerKgUgx: rate,
       createdAt: widget.existing?.createdAt ?? now,
       updatedAt: now,
       deletedAt: null,
@@ -115,6 +164,7 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     _phoneController.dispose();
     _addressController.dispose();
     _notesController.dispose();
+    _rateController.dispose();
     super.dispose();
   }
 
@@ -153,6 +203,17 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
               fieldKey: const Key('customer_notes'),
               maxLines: 2,
             ),
+            if (widget.canEditRate) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _Field(
+                label: 'Standing rate (USh/kg) — blank uses the default'
+                    '${widget.defaultRatePerKgUgx > 0 ? ' of ${formatUgx(widget.defaultRatePerKgUgx.round())}' : ''}',
+                controller: _rateController,
+                fieldKey: const Key('customer_rate'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
             const SizedBox(height: AppSpacing.xl),
             FilledButton(
               key: const Key('customer_save'),

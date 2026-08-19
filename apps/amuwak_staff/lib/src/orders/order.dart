@@ -53,6 +53,8 @@ extension LaundryOrderDriftX on LaundryOrder {
               ))
           .toList(growable: false),
       ratePerKgSnapshotUgx: row.ratePerKgSnapshotUgx,
+      rateOverrideReason: row.rateOverrideReason,
+      rateOverrideFromUgx: row.rateOverrideFromUgx,
       estimatedWeightKg: row.estimatedWeightKg,
       finalWeightKg: row.finalWeightKg,
       lineItems: _parseLineItems(jsonDecode(row.lineItems)),

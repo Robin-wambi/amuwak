@@ -54,8 +54,8 @@ void main() {
     expect(rows.first.orderCode, 'AMW-1');
   });
 
-  test('schemaVersion is 9', () {
-    expect(db.schemaVersion, 9);
+  test('schemaVersion is 10', () {
+    expect(db.schemaVersion, 10);
   });
 
   test('orders table exposes the pricing columns', () async {
@@ -174,6 +174,50 @@ void main() {
         reason: 'the from < 9 branch should add the collection-date column',
       );
       await migrated.close();
+    } finally {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  test('onUpgrade from v9 adds the rate-override audit columns', () async {
+    final tempDir = await Directory.systemTemp.createTemp('amuwak_mig_v9');
+    final file = File(p.join(tempDir.path, 'v9.sqlite'));
+    try {
+      // A v9-era database already holding an order, so the upgrade has to
+      // back-fill an existing row rather than only create the columns.
+      final seed = sqlite3.open(file.path);
+      seed.execute(
+        'CREATE TABLE orders (id TEXT NOT NULL PRIMARY KEY, order_code TEXT NOT NULL);',
+      );
+      seed.execute("INSERT INTO orders VALUES ('o-1', 'AMW-1');");
+      seed.execute('PRAGMA user_version = 9;');
+      seed.dispose();
+
+      final migrated = AppDatabase.forTesting(NativeDatabase(file));
+      // Closed in a finally: a failed expectation would otherwise leave the
+      // sqlite file open, and Windows then fails the temp-dir delete below with
+      // a file-lock error that masks the assertion that actually failed.
+      try {
+        final cols =
+            await migrated.customSelect("PRAGMA table_info('orders')").get();
+        expect(
+          cols.map((r) => r.read<String>('name')),
+          containsAll(
+              <String>['rate_override_reason', 'rate_override_from_ugx']),
+          reason: 'the from < 10 branch should add both audit columns',
+        );
+
+        // An order that predates the columns reads as "not overridden" rather
+        // than erroring the orders stream.
+        final existing = await migrated
+            .customSelect(
+                'SELECT rate_override_reason, rate_override_from_ugx FROM orders')
+            .get();
+        expect(existing.single.read<String?>('rate_override_reason'), isNull);
+        expect(existing.single.read<double?>('rate_override_from_ugx'), isNull);
+      } finally {
+        await migrated.close();
+      }
     } finally {
       await tempDir.delete(recursive: true);
     }

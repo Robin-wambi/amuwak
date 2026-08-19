@@ -37,6 +37,8 @@ Map<String, dynamic> orderUpsertPayload(
       'expected_collection_at':
           order.expectedCollectionAt?.toUtc().toIso8601String(),
       'rate_per_kg_snapshot_ugx': order.ratePerKgSnapshotUgx,
+      'rate_override_reason': order.rateOverrideReason,
+      'rate_override_from_ugx': order.rateOverrideFromUgx,
       'estimated_weight_kg': order.estimatedWeightKg,
       'final_weight_kg': order.finalWeightKg,
       'line_items': order.lineItems.map((i) => i.toJson()).toList(),

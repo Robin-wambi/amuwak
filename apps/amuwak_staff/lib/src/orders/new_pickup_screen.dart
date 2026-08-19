@@ -47,6 +47,8 @@ class NewPickupScreen extends StatefulWidget {
     this.deliveryFeeUgx = 0,
     this.expressFlatUgx = 0,
     this.expressPct = 0,
+    this.minRatePctOfDefault = 0,
+    this.isManager = false,
   });
 
   final CustomersRepository customersRepo;
@@ -64,6 +66,16 @@ class NewPickupScreen extends StatefulWidget {
   final int deliveryFeeUgx;
   final int expressFlatUgx;
   final double expressPct;
+
+  /// Floor for a typed override, as a whole percentage of
+  /// [defaultRatePerKgUgx]. 0 disables it — the shipped default, so nothing
+  /// changes until a manager configures one.
+  final int minRatePctOfDefault;
+
+  /// Managers are exempt from the floor. The server enforces this too, in
+  /// `create_pickup`; this check exists so the rider learns before the order is
+  /// queued rather than after the outbox rejects it.
+  final bool isManager;
 
   @override
   State<NewPickupScreen> createState() => _NewPickupScreenState();
@@ -115,6 +127,7 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
   final _countController = TextEditingController(text: '0');
   final _notesController = TextEditingController();
   final _customRateController = TextEditingController();
+  final _rateReasonController = TextEditingController();
 
   /// Steps the item count by [delta], clamped to 0..[_maxItemCount], keeping the
   /// typable field in sync.
@@ -156,6 +169,26 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
     final typed = double.tryParse(_customRateController.text.trim());
     if (typed != null && typed > 0) return typed;
     return _matchedCustomerRate ?? widget.defaultRatePerKgUgx;
+  }
+
+  /// The rate that would apply with no typed override — the matched customer's
+  /// standing rate, or the global default. This is what an override replaces,
+  /// and what gets recorded as `rateOverrideFromUgx`.
+  double get _baseRate => _matchedCustomerRate ?? widget.defaultRatePerKgUgx;
+
+  /// A typed override, rounded, or null when the field is blank or unusable.
+  double? get _typedRate {
+    final parsed =
+        double.tryParse(_customRateController.text.trim())?.roundToDouble();
+    return (parsed != null && parsed > 0) ? parsed : null;
+  }
+
+  /// Whether the typed rate actually differs from what would otherwise apply.
+  /// Typing the same number as the default is not an override and must not
+  /// demand a reason.
+  bool get _isOverride {
+    final typed = _typedRate;
+    return typed != null && typed != _baseRate;
   }
 
   /// Describes the express surcharge so the rider sees what enabling it costs.
@@ -459,6 +492,37 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
       );
       return;
     }
+    // An override must say why. Checked before anything is written or queued,
+    // so the rider is told now rather than after the outbox is rejected by
+    // create_pickup's own floor check.
+    final reason = _rateReasonController.text.trim();
+    if (_isOverride && reason.isEmpty) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Say why this order is priced differently.'),
+      ));
+      return;
+    }
+    // The floor applies to whatever rate the order actually bills at, not
+    // only a typed override: a returning customer's standing rate can itself
+    // sit below a floor raised after that rate was set, and that must surface
+    // here rather than as a silent outbox dead-letter from create_pickup's own
+    // floor check.
+    final floor = rateFloorUgx(
+      defaultRateUgx: widget.defaultRatePerKgUgx,
+      minRatePct: widget.minRatePctOfDefault,
+    );
+    if (!isRateAllowed(
+        rateUgx: customRate ?? _resolvedRate,
+        floorUgx: floor,
+        isManager: widget.isManager)) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('That is below the minimum of ${formatUgx(floor)}/kg. '
+            'A manager can approve it.'),
+      ));
+      return;
+    }
     final customerId =
         _matchedCustomerId ??
         (_pendingCustomerId ??= widget.customerIdGenerator());
@@ -501,6 +565,10 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
       scheduledFor: scheduled,
       expectedCollectionAt: _expectedCollectionAt,
       ratePerKgSnapshotUgx: customRate ?? _resolvedRate,
+      // Null on an ordinary order — an override is the exception, and a null
+      // pair is what says "this was priced normally".
+      rateOverrideReason: _isOverride ? reason : null,
+      rateOverrideFromUgx: _isOverride ? _baseRate : null,
       // Freeze the pricing config in force now. When not express, the flat/pct
       // snapshots stay 0 (isExpress gates them anyway).
       deliveryFeeSnapshotUgx: _includeDelivery ? widget.deliveryFeeUgx : 0,
@@ -564,6 +632,7 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
     _countController.dispose();
     _notesController.dispose();
     _customRateController.dispose();
+    _rateReasonController.dispose();
     super.dispose();
   }
 
@@ -906,6 +975,21 @@ class _NewPickupScreenState extends State<NewPickupScreen> {
                       'Leave blank to use the default — ${formatUgx(widget.defaultRatePerKgUgx.round())}/kg',
                 ),
               ),
+              // Only asked for once the typed rate actually differs from what
+              // would otherwise apply — re-evaluated on every keystroke via the
+              // field's onChanged setState above.
+              if (_isOverride) ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  key: const Key('np_rate_reason'),
+                  controller: _rateReasonController,
+                  decoration: InputDecoration(
+                    labelText: 'Why this rate?',
+                    helperText:
+                        'Replaces ${formatUgx(_baseRate.round())}/kg. Recorded on the order.',
+                  ),
+                ),
+              ],
               SwitchListTile(
                 key: const Key('np_delivery_toggle'),
                 contentPadding: EdgeInsets.zero,

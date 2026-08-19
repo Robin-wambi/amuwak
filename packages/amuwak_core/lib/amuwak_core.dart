@@ -38,6 +38,7 @@ export 'src/orders/pricing/pricing_calculator.dart';
 export 'src/orders/pricing/pricing_inputs.dart';
 export 'src/orders/pricing/line_item.dart';
 export 'src/pricing/cart_estimate.dart';
+export 'src/pricing/rate_floor.dart';
 
 export 'src/auth/auth_service.dart';
 export 'src/auth/mfa_service.dart';
