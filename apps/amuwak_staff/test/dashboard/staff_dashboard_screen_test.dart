@@ -394,6 +394,48 @@ void main() {
     expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
   });
 
+  testWidgets(
+      'Home: the order-count grid is collapsed by default and the toggle '
+      'expands/re-collapses it, flipping its own label', (tester) async {
+    await pumpDashboardWithDb(tester);
+
+    // Collapsed by default.
+    expect(find.text('Assigned'), findsNothing);
+    expect(find.text('View all'), findsOneWidget);
+    expect(find.text('Less'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('glance_toggle')));
+    await tester.pump();
+
+    // Expanded: the grid appears, the toggle now reads "Less".
+    expect(find.text('Assigned'), findsOneWidget);
+    expect(find.text('Less'), findsOneWidget);
+    expect(find.text('View all'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('glance_toggle')));
+    await tester.pump();
+
+    // A second tap collapses it again.
+    expect(find.text('Assigned'), findsNothing);
+    expect(find.text('View all'), findsOneWidget);
+    expect(find.text('Less'), findsNothing);
+  });
+
+  testWidgets(
+      "Home: the revenue/new-customers tiles stay visible whether the "
+      "order-count grid is collapsed or expanded", (tester) async {
+    await pumpDashboardWithDb(tester);
+
+    expect(find.byKey(const Key('glance_revenue')), findsOneWidget);
+    expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('glance_toggle')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('glance_revenue')), findsOneWidget);
+    expect(find.byKey(const Key('glance_new_customers')), findsOneWidget);
+  });
+
   testWidgets('Home: the Add customer quick action opens the form for a manager',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
@@ -897,6 +939,8 @@ void main() {
       ),
     ]);
 
+    await tester.tap(find.byKey(const Key('glance_toggle')));
+    await tester.pump();
     await tester.tap(find.text('Assigned'));
     await tester.pumpAndSettle();
 
@@ -1150,6 +1194,8 @@ void main() {
     await pumpDashboardWithDb(tester);
 
     expect(find.byType(AnimatedGradientHeader), findsOneWidget);
+    await tester.tap(find.byKey(const Key('glance_toggle')));
+    await tester.pump();
     expect(find.text('Assigned'), findsOneWidget);
     // Quick actions are chrome; assert they're mounted regardless of the fold.
     expect(find.text('Quick actions', skipOffstage: false), findsOneWidget);
@@ -1210,12 +1256,14 @@ void main() {
     await tester.pump(); // deliver the stream event
     await tester.pump(); // rebuild with data
 
-    // Chrome stayed mounted (same Element), progress was replaced by the
-    // summary grid.
+    // Chrome stayed mounted (same Element), progress was replaced by
+    // Business at a glance (which now owns the order-count grid behind its
+    // own collapsed-by-default toggle, so "Assigned" is no longer the
+    // data-has-arrived signal).
     expect(find.byType(AnimatedGradientHeader), findsOneWidget);
     expect(find.text('New pickup', skipOffstage: false), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
-    expect(find.text('Assigned'), findsOneWidget);
+    expect(find.text('Business at a glance'), findsOneWidget);
     expect(tester.element(find.byType(AnimatedGradientHeader)), same(headerElement));
   });
 
@@ -1275,6 +1323,8 @@ void main() {
 
     // The order list no longer lives on Home — open it from the Assigned
     // summary card, then tap the order there.
+    await tester.tap(find.byKey(const Key('glance_toggle')));
+    await tester.pump();
     await tester.tap(find.text('Assigned'));
     await tester.pumpAndSettle();
     expect(find.byType(OrderFilterScreen), findsOneWidget);
@@ -1316,6 +1366,8 @@ void main() {
       ]);
 
       // Summary cards are present, but the order itself is not listed on Home.
+      await tester.tap(find.byKey(const Key('glance_toggle')));
+      await tester.pump();
       expect(find.text('Assigned'), findsOneWidget);
       expect(find.text('Assigned orders', skipOffstage: false), findsNothing);
       expect(find.text('Home List Gone'), findsNothing);
@@ -1352,6 +1404,8 @@ void main() {
         currentUserIdProvider.overrideWith((ref) => 'staff-1'),
       ]);
 
+      await tester.tap(find.byKey(const Key('glance_toggle')));
+      await tester.pump();
       await tester.tap(find.text('Pending pickup'));
       await tester.pumpAndSettle();
 
@@ -1402,6 +1456,8 @@ void main() {
         currentUserIdProvider.overrideWith((ref) => 'staff-1'),
       ]);
 
+      await tester.tap(find.byKey(const Key('glance_toggle')));
+      await tester.pump();
       await tester.tap(find.text('Completed today'));
       await tester.pumpAndSettle();
 
@@ -1426,6 +1482,9 @@ void main() {
       addTearDown(tester.view.reset);
 
       await pumpDashboardWithDb(tester);
+
+      await tester.tap(find.byKey(const Key('glance_toggle')));
+      await tester.pump();
 
       double cardHeight(String title) => tester
           .getSize(find

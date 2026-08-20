@@ -957,7 +957,8 @@ class _DashboardTabShell extends StatelessWidget {
 /// The Home tab. The header and quick actions are persistent chrome: they
 /// mount once (during loading, so a rider can tap straight into a new pickup)
 /// and stay put when orders arrive, instead of re-revealing on the
-/// loading→data swap. Only the variable middle (progress bar → summary grid)
+/// loading→data swap. Only the variable middle (progress bar → Business at a
+/// glance, which owns the order-count summary grid behind its own toggle)
 /// reveals as it appears.
 ///
 /// The summary cards are the entry point to the orders themselves: each is
@@ -989,7 +990,6 @@ class _HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loading = orders == null;
-    final list = orders ?? const <LaundryOrder>[];
 
     // Stagger the entrance: each content block reveals shortly after the
     // previous. The delay index is capped so long lists still appear promptly.
@@ -1003,15 +1003,15 @@ class _HomeTab extends StatelessWidget {
       );
     }
 
-    // The middle slot: a progress bar while loading, the summary grid once
-    // orders arrive. It occupies the same ListView position in both states so
-    // the header above it keeps its revealed state across the transition.
-    final Widget middle = loading
-        ? const Padding(
-            padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-            child: LinearProgressIndicator(),
-          )
-        : _SummaryGrid(orders: list, onCardTap: onOpenFiltered);
+    // The middle slot: a progress bar while loading. It occupies the same
+    // ListView position in both states so the header above it keeps its
+    // revealed state across the transition. Once orders arrive,
+    // _BusinessAtAGlance renders in its place and owns the order-count
+    // summary grid internally, gated by its own View all/Less toggle.
+    const Widget middle = Padding(
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: LinearProgressIndicator(),
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -1023,12 +1023,12 @@ class _HomeTab extends StatelessWidget {
       children: [
         reveal(_DashboardHeader(orders: orders)),
         const SizedBox(height: AppSpacing.xl),
-        // Today's headline numbers, alongside the summary grid once data lands.
-        if (!loading) ...[
-          reveal(const _BusinessAtAGlance()),
+        if (loading)
+          reveal(middle)
+        else ...[
+          reveal(_BusinessAtAGlance(onOpenFiltered: onOpenFiltered)),
           const SizedBox(height: AppSpacing.xl),
         ],
-        reveal(middle),
         const SizedBox(height: AppSpacing.xxl),
         reveal(_QuickActions(
           onNewPickup: onNewPickup,
@@ -1630,13 +1630,26 @@ class _SummaryCard extends StatelessWidget {
 }
 
 /// Home "Business at a glance": today's collected revenue + customers added
-/// today. A [ConsumerWidget] so it self-watches the orders + customers streams
-/// (Riverpod dedups the orders watch the shell already holds).
-class _BusinessAtAGlance extends ConsumerWidget {
-  const _BusinessAtAGlance();
+/// today, plus the order-count summary grid behind a collapsed-by-default
+/// View all/Less toggle. A [ConsumerStatefulWidget] so it self-watches the
+/// orders + customers streams (Riverpod dedups the orders watch the shell
+/// already holds) while also holding the toggle's local expanded state.
+class _BusinessAtAGlance extends ConsumerStatefulWidget {
+  const _BusinessAtAGlance({required this.onOpenFiltered});
+
+  /// Opens a filtered order list for a tapped summary card. Forwarded
+  /// straight through to [_SummaryGrid] once the grid is expanded.
+  final void Function(OrderFilter) onOpenFiltered;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BusinessAtAGlance> createState() => _BusinessAtAGlanceState();
+}
+
+class _BusinessAtAGlanceState extends ConsumerState<_BusinessAtAGlance> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
     final orders =
         ref.watch(ordersStreamProvider).valueOrNull ?? const <LaundryOrder>[];
     final customers =
@@ -1647,8 +1660,44 @@ class _BusinessAtAGlance extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Business at a glance',
-            style: Theme.of(context).textTheme.titleMedium),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Business at a glance',
+                style: Theme.of(context).textTheme.titleMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            InkWell(
+              key: const Key('glance_toggle'),
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.xs,
+                  vertical: AppSpacing.xs,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text(
+                      _expanded ? 'Less' : 'View all',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.md),
         IntrinsicHeight(
           child: Row(
@@ -1674,6 +1723,10 @@ class _BusinessAtAGlance extends ConsumerWidget {
             ],
           ),
         ),
+        if (_expanded) ...[
+          const SizedBox(height: AppSpacing.xl),
+          _SummaryGrid(orders: orders, onCardTap: widget.onOpenFiltered),
+        ],
       ],
     );
   }
