@@ -60,7 +60,7 @@ committable.
 
 ## Workstream A — Business at a glance toggle
 
-### Task A1: Collapse order-count metrics behind a View all/Less toggle
+### Task 1 (Workstream A): Collapse order-count metrics behind a View all/Less toggle
 
 **Files:**
 - `apps/amuwak_staff/lib/src/dashboard/staff_dashboard_screen.dart`
@@ -110,7 +110,7 @@ committable.
 
 ## Workstream B — Greeting card / role chip relocation
 
-### Task B1: Move greeting + role chip outside the gradient header; restyle the chip
+### Task 2 (Workstream B): Move greeting + role chip outside the gradient header; restyle the chip
 
 **Files:**
 - `apps/amuwak_staff/lib/src/dashboard/staff_dashboard_screen.dart`
@@ -152,7 +152,7 @@ committable.
 
 ## Workstream C — Expenses tab
 
-### Task C1: Reskin expense rows as AppCard-based cards
+### Task 3 (Workstream C): Reskin expense rows as AppCard-based cards
 
 **Files:**
 - `apps/amuwak_staff/lib/src/expenses/expenses_list_screen.dart`
@@ -175,7 +175,7 @@ committable.
 
 **Commit:** `feat(expenses): reskin ledger rows as AppCard-based cards`
 
-### Task C2: Richer summary card with per-category breakdown
+### Task 4 (Workstream C): Richer summary card with per-category breakdown
 
 **Files:**
 - `apps/amuwak_staff/lib/src/expenses/expenses_list_screen.dart`
@@ -204,7 +204,7 @@ committable.
 
 **Commit:** `feat(expenses): show a per-category breakdown in the summary card`
 
-### Task C3: Search + category filter chips
+### Task 5 (Workstream C): Search + category filter chips
 
 **Files:**
 - `apps/amuwak_staff/lib/src/expenses/expenses_list_screen.dart`
@@ -231,7 +231,7 @@ committable.
 
 ## Workstream D — Customers tab
 
-### Task D1: Reskin customer rows as AppCard-based cards
+### Task 6 (Workstream D): Reskin customer rows as AppCard-based cards
 
 **Files:**
 - `apps/amuwak_staff/lib/src/customers/customers_list_screen.dart`
@@ -260,11 +260,13 @@ committable.
 
 ## Sequencing notes
 
-- A and B both touch `staff_dashboard_screen.dart` but disjoint line ranges
-  (`_BusinessAtAGlance`/`_HomeTab` vs. `_DashboardHeader`/`_RoleChip`) — low
-  conflict risk done as separate sequential commits.
-- C and D are in fully separate files/tests from A/B and each other.
-- Recommended order: A1 → B1 → C1 → C2 → C3 → D1.
+- Task 1 (A) and Task 2 (B) both touch `staff_dashboard_screen.dart` but
+  disjoint line ranges (`_BusinessAtAGlance`/`_HomeTab` vs.
+  `_DashboardHeader`/`_RoleChip`) — low conflict risk done as separate
+  sequential commits.
+- Tasks 3-5 (C) and Task 6 (D) are in fully separate files/tests from
+  Tasks 1-2 (A/B) and each other.
+- Recommended order: Task 1 → Task 2 → Task 3 → Task 4 → Task 5 → Task 6.
 
 ## Verification
 
@@ -272,9 +274,9 @@ committable.
   this host — `flutter test <path>`, one file at a time, not the whole suite
   at once; use `--timeout=none` if a file is slow to load).
 - `flutter analyze` clean on all touched files.
-- Manually re-check: the C2 total/breakdown string-collision fix, and the 7
-  A1 test updates — these are the two spots most likely to have a subtle
-  miss.
+- Manually re-check: the Task 4 total/breakdown string-collision fix, and
+  the 7 Task 1 test updates — these are the two spots most likely to have a
+  subtle miss.
 - After all tasks land, run the app (`flutter run`) and manually check the
   Home tab (toggle expand/collapse, greeting/chip layout on a narrow phone
   width), Expenses tab (cards, summary breakdown, search/filter), and
