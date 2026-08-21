@@ -25,12 +25,61 @@ Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
 void main() {
   testWidgets('renders the total spent across all expenses', (tester) async {
     await tester.pumpWidget(_host(ExpensesListView(expenses: [
-      _expense(id: 'a', amountUgx: 8000, spentAt: DateTime.utc(2026, 8, 14)),
-      _expense(id: 'b', amountUgx: 2000, spentAt: DateTime.utc(2026, 8, 14)),
+      _expense(
+        id: 'a',
+        category: ExpenseCategory.detergent,
+        amountUgx: 8000,
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+      _expense(
+        id: 'b',
+        category: ExpenseCategory.fuel,
+        amountUgx: 2000,
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
     ])));
 
-    // Both expenses share a category+day, so 10,000 is unambiguously the total.
+    // Different categories keep each per-category subtotal (8,000 / 2,000)
+    // distinct from the grand total, so 10,000 is unambiguously the total.
     expect(find.text('USh 10,000'), findsOneWidget);
+  });
+
+  testWidgets('summary card shows a per-category breakdown', (tester) async {
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(
+        id: 'a',
+        category: ExpenseCategory.detergent,
+        amountUgx: 8000,
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+      _expense(
+        id: 'b',
+        category: ExpenseCategory.fuel,
+        amountUgx: 15000,
+        spentAt: DateTime.utc(2026, 8, 13),
+      ),
+      _expense(
+        id: 'c',
+        category: ExpenseCategory.packaging,
+        amountUgx: 3000,
+        spentAt: DateTime.utc(2026, 8, 13),
+      ),
+    ])));
+
+    // Each present category has exactly one expense here, so its label and
+    // amount should appear twice: once on that expense's own row, once again
+    // in the summary card's per-category breakdown. This only holds once the
+    // breakdown exists — there's no other source of a second occurrence.
+    expect(find.text(ExpenseCategory.detergent.label), findsNWidgets(2));
+    expect(find.text(ExpenseCategory.fuel.label), findsNWidgets(2));
+    expect(find.text(ExpenseCategory.packaging.label), findsNWidgets(2));
+    expect(find.text('USh 8,000'), findsNWidgets(2));
+    expect(find.text('USh 15,000'), findsNWidgets(2));
+    expect(find.text('USh 3,000'), findsNWidgets(2));
+    // The grand total (26,000) is unambiguous since no category sums to it.
+    expect(find.text('USh 26,000'), findsOneWidget);
+    // A category with no spend must not get a breakdown row.
+    expect(find.text(ExpenseCategory.airtimeMisc.label), findsNothing);
   });
 
   testWidgets('groups expenses under a per-day header, newest day first',
@@ -78,9 +127,12 @@ void main() {
       ),
     ])));
 
-    expect(find.text(ExpenseCategory.fuel.label), findsOneWidget);
+    // Appears twice: once in the summary card's per-category breakdown,
+    // once as the row's own category label.
+    expect(find.text(ExpenseCategory.fuel.label), findsNWidgets(2));
     expect(find.text('boda to depot'), findsOneWidget);
-    // Appears twice: once as the total, once as the single row.
+    // Appears three times: breakdown row, grand total, and the row itself —
+    // this is the sole expense, so all three amounts coincide.
     expect(find.text('USh 15,000'), findsWidgets);
   });
 
@@ -104,9 +156,9 @@ void main() {
       _expense(id: 'b', spentAt: DateTime.utc(2026, 8, 14)),
     ])));
 
-    // Only the two rows are AppCards — the running-total header is a plain
-    // Card, matching OrderCard's reskin elsewhere in the app.
-    expect(find.byType(AppCard), findsNWidgets(2));
+    // The two rows plus the summary card (per-category breakdown + total)
+    // are all AppCards now.
+    expect(find.byType(AppCard), findsNWidgets(3));
   });
 
   testWidgets('delete affordance reports the tapped expense', (tester) async {

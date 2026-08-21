@@ -99,7 +99,10 @@ class ExpensesListView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.xl),
       children: [
-        _TotalCard(totalUgx: expenses.totalExpenseUgx),
+        _ExpensesSummaryCard(
+          byCategory: expenses.byCategory,
+          totalUgx: expenses.totalExpenseUgx,
+        ),
         const SizedBox(height: AppSpacing.lg),
         for (final group in groups) ...[
           Padding(
@@ -143,30 +146,87 @@ List<_DayGroup> _groupByDay(List<Expense> sorted) {
   return out;
 }
 
-class _TotalCard extends StatelessWidget {
-  const _TotalCard({required this.totalUgx});
+/// The ledger's summary card: a row per category that has spend so far (icon,
+/// label, subtotal — in the enum's declared order, skipping absent
+/// categories), a divider, then the emphasized grand total. Mirrors the shape
+/// of `daily_report_screen.dart`'s `_ExpensesCard`, minus the net-profit/
+/// margin rows below the total, which need revenue data this tab doesn't have.
+class _ExpensesSummaryCard extends StatelessWidget {
+  const _ExpensesSummaryCard({
+    required this.byCategory,
+    required this.totalUgx,
+  });
 
+  final Map<ExpenseCategory, int> byCategory;
   final int totalUgx;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Total spent', style: theme.textTheme.labelLarge),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              formatUgx(totalUgx),
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
+    // Iterate the enum so categories always render in a stable, defined
+    // order; skip any with no spend.
+    final rows = <Widget>[];
+    for (final category in ExpenseCategory.values) {
+      final amount = byCategory[category];
+      if (amount == null) continue;
+      if (rows.isNotEmpty) {
+        rows.add(const SizedBox(height: AppSpacing.sm));
+      }
+      rows.add(_CategoryBreakdownRow(category: category, amountUgx: amount));
+    }
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...rows,
+          const Divider(height: AppSpacing.xl),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Total spent', style: theme.textTheme.labelLarge),
+              ),
+              Text(
+                formatUgx(totalUgx),
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// One row of the summary card's per-category breakdown: the category's icon,
+/// label, and its spend so far.
+class _CategoryBreakdownRow extends StatelessWidget {
+  const _CategoryBreakdownRow({
+    required this.category,
+    required this.amountUgx,
+  });
+
+  final ExpenseCategory category;
+  final int amountUgx;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(_categoryIcon(category),
+            size: 20, color: theme.colorScheme.primary),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(category.label, style: theme.textTheme.bodyMedium),
+        ),
+        Text(
+          formatUgx(amountUgx),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(fontWeight: FontWeight.w600),
+        ),
+      ],
     );
   }
 }
