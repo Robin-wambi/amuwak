@@ -1409,9 +1409,11 @@ class _ErrorRetry extends StatelessWidget {
 // Private dashboard widgets (header, grid, cards, chips, actions)
 // ---------------------------------------------------------------------------
 
-/// The home greeting card: a time-aware, personalised greeting with the staff
-/// member's first name and role, over a live status line (or today's date while
-/// orders load). Sits on the animated brand gradient.
+/// The home greeting block: a time-aware, personalised greeting with the
+/// staff member's first name sits above the animated brand gradient card,
+/// balanced by the role chip on the opposite side of the same row. The
+/// gradient card underneath carries only the brand-mark avatar and a live
+/// status line (or today's date while orders load).
 class _DashboardHeader extends ConsumerWidget {
   const _DashboardHeader({required this.orders});
 
@@ -1432,61 +1434,60 @@ class _DashboardHeader extends ConsumerWidget {
     final role = roleLabel(ref.watch(currentRoleProvider));
     final secondLine = headerStatusLine(orders) ?? formatHeaderDate(now);
 
-    return AnimatedGradientHeader(
-      padding: const EdgeInsets.all(AppSpacing.lg2),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: AppColors.white,
-            // The brand mark is an orange rounded square; a white disc behind it
-            // gives contrast against the orange header. Sized to sit fully
-            // inside the circle (its corners stay within the 28px radius).
-            child: Image.asset(
-              'assets/branding/app_icon.png',
-              width: 36,
-              height: 36,
-              fit: BoxFit.contain,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                greetingLine,
+                style: textTheme.headlineMedium,
+              ),
             ),
-          ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        greetingLine,
-                        style: textTheme.headlineMedium?.copyWith(
-                          color: AppColors.white,
-                        ),
-                      ),
-                    ),
-                    if (role != null) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      _RoleChip(label: role),
-                    ],
-                  ],
+            if (role != null) ...[
+              const SizedBox(width: AppSpacing.sm),
+              _RoleChip(label: role),
+            ],
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        AnimatedGradientHeader(
+          padding: const EdgeInsets.all(AppSpacing.lg2),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.white,
+                // The brand mark is an orange rounded square; a white disc behind it
+                // gives contrast against the orange header. Sized to sit fully
+                // inside the circle (its corners stay within the 28px radius).
+                child: Image.asset(
+                  'assets/branding/app_icon.png',
+                  width: 36,
+                  height: 36,
+                  fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 4),
-                Text(
+              ),
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Text(
                   secondLine,
                   style: textTheme.bodyMedium?.copyWith(
                     color: AppColors.white.withValues(alpha: 0.9),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// Small translucent pill showing the staff member's role beside the greeting.
+/// Small bordered pill showing the staff member's role, balancing the
+/// greeting on the opposite end of the row above the gradient card.
 class _RoleChip extends StatelessWidget {
   const _RoleChip({required this.label});
 
@@ -1497,13 +1498,14 @@ class _RoleChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(20),
+        color: AppColors.white,
+        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadii.chip),
       ),
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: AppColors.white,
+          color: AppColors.primary,
           fontWeight: FontWeight.w600,
         ),
       ),

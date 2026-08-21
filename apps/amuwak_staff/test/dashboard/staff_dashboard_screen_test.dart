@@ -1202,6 +1202,76 @@ void main() {
   });
 
   testWidgets(
+      'Home: the greeting and role chip render above the gradient header '
+      'card, leaving only the status line inside it', (tester) async {
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentRoleProvider.overrideWithValue('manager'),
+    ]);
+
+    // The greeting renders once, and it is not a descendant of the gradient
+    // card — it now sits above it.
+    expect(find.textContaining('Good '), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AnimatedGradientHeader),
+        matching: find.textContaining('Good '),
+      ),
+      findsNothing,
+    );
+
+    // Same for the role chip's label.
+    expect(find.text('Manager'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AnimatedGradientHeader),
+        matching: find.text('Manager'),
+      ),
+      findsNothing,
+    );
+
+    // The status line ("All caught up" — no orders seeded) stays inside the
+    // gradient card alongside the brand-mark avatar.
+    expect(
+      find.descendant(
+        of: find.byType(AnimatedGradientHeader),
+        matching: find.text('All caught up'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'Home: the greeting/role-chip row does not overflow on a narrow phone',
+      (tester) async {
+    // 360px wide, plus a two-word display name and the role chip both
+    // competing for the same row — the greeting side must still wrap/shrink
+    // rather than push the chip off past the edge.
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpDashboardWithDb(tester, extraOverrides: [
+      currentStaffProvider.overrideWith(
+        (ref) => Stream<StaffData?>.value(StaffData(
+          id: 'u1',
+          username: 'user1',
+          displayName: 'Christabel Nakato',
+          role: 'manager',
+          active: true,
+          mustChangePin: false,
+          createdAt: DateTime(2024),
+          updatedAt: DateTime(2024),
+        )),
+      ),
+      currentRoleProvider.overrideWithValue('manager'),
+    ]);
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Christabel'), findsOneWidget);
+    expect(find.text('Manager'), findsOneWidget);
+  });
+
+  testWidgets(
       'Home tab keeps header + quick-actions chrome across the loading→data '
       'transition (progress swaps to summary, no re-mount)', (tester) async {
     // Drive the stream manually so we can observe the loading frame and then
