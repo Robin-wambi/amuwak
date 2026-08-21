@@ -1025,10 +1025,13 @@ class _HomeTab extends StatelessWidget {
         const SizedBox(height: AppSpacing.xl),
         if (loading)
           reveal(middle)
-        else ...[
+        else
+          // No trailing SizedBox here: _BusinessAtAGlance's own internal
+          // AppSpacing.xl gap sits BEFORE the summary grid (between the
+          // tiles and the grid), not after it, so the widget itself never
+          // ends with a spacer. The xxl gap below is the only spacing
+          // needed before Quick Actions, in both toggle states.
           reveal(_BusinessAtAGlance(onOpenFiltered: onOpenFiltered)),
-          const SizedBox(height: AppSpacing.xl),
-        ],
         const SizedBox(height: AppSpacing.xxl),
         reveal(_QuickActions(
           onNewPickup: onNewPickup,
