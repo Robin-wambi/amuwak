@@ -175,4 +175,151 @@ void main() {
     expect(deleted, isNotNull);
     expect(deleted!.id, 'a');
   });
+
+  testWidgets('search narrows the visible rows by note text', (tester) async {
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(
+        id: 'a',
+        category: ExpenseCategory.detergent,
+        amountUgx: 5000,
+        note: 'omo soap',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+      _expense(
+        id: 'b',
+        category: ExpenseCategory.fuel,
+        amountUgx: 7000,
+        note: 'boda fuel',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+    ])));
+
+    expect(find.text('omo soap'), findsOneWidget);
+    expect(find.text('boda fuel'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('expenses_search')), 'boda');
+    await tester.pump();
+
+    expect(find.text('boda fuel'), findsOneWidget);
+    expect(find.text('omo soap'), findsNothing);
+  });
+
+  testWidgets('a category chip narrows to that category', (tester) async {
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(
+        id: 'a',
+        category: ExpenseCategory.detergent,
+        amountUgx: 5000,
+        note: 'omo soap',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+      _expense(
+        id: 'b',
+        category: ExpenseCategory.fuel,
+        amountUgx: 7000,
+        note: 'boda fuel',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+    ])));
+
+    // Before filtering, the Fuel label appears twice: once in the summary
+    // card's per-category breakdown, once on the fuel row itself.
+    expect(find.text(ExpenseCategory.fuel.label), findsNWidgets(2));
+
+    await tester.tap(
+      find.byKey(Key('expenses_chip_${ExpenseCategory.detergent.name}')),
+    );
+    await tester.pump();
+
+    // The detergent row stays; the fuel row is filtered out, so its label now
+    // only comes from the (always-unfiltered) summary breakdown.
+    expect(find.text('omo soap'), findsOneWidget);
+    expect(find.text('boda fuel'), findsNothing);
+    expect(find.text(ExpenseCategory.fuel.label), findsOneWidget);
+  });
+
+  testWidgets("the 'All' chip resets an active category filter",
+      (tester) async {
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(
+        id: 'a',
+        category: ExpenseCategory.detergent,
+        amountUgx: 5000,
+        note: 'omo soap',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+      _expense(
+        id: 'b',
+        category: ExpenseCategory.fuel,
+        amountUgx: 7000,
+        note: 'boda fuel',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+    ])));
+
+    await tester.tap(
+      find.byKey(Key('expenses_chip_${ExpenseCategory.detergent.name}')),
+    );
+    await tester.pump();
+    expect(find.text('boda fuel'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('expenses_chip_all')));
+    await tester.pump();
+
+    expect(find.text('omo soap'), findsOneWidget);
+    expect(find.text('boda fuel'), findsOneWidget);
+  });
+
+  testWidgets(
+      "summary card's total stays fixed while a filter narrows the rows",
+      (tester) async {
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(
+        id: 'a',
+        category: ExpenseCategory.detergent,
+        amountUgx: 8000,
+        note: 'omo soap',
+        spentAt: DateTime.utc(2026, 8, 14),
+      ),
+      _expense(
+        id: 'b',
+        category: ExpenseCategory.fuel,
+        amountUgx: 15000,
+        note: 'boda fuel',
+        spentAt: DateTime.utc(2026, 8, 13),
+      ),
+      _expense(
+        id: 'c',
+        category: ExpenseCategory.packaging,
+        amountUgx: 3000,
+        note: 'boxes',
+        spentAt: DateTime.utc(2026, 8, 13),
+      ),
+    ])));
+
+    // Grand total is unambiguous — no category subtotal sums to it.
+    expect(find.text('USh 26,000'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(Key('expenses_chip_${ExpenseCategory.detergent.name}')),
+    );
+    await tester.pump();
+
+    // Row list narrows to the detergent expense only ...
+    expect(find.text('omo soap'), findsOneWidget);
+    expect(find.text('boda fuel'), findsNothing);
+    expect(find.text('boxes'), findsNothing);
+    // ... but the summary card keeps aggregating the full, unfiltered list —
+    // "Total spent" must not appear to change mid-filter.
+    expect(find.text('USh 26,000'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('expenses_search')),
+      'zzz-no-match',
+    );
+    await tester.pump();
+
+    // Even a search query that matches nothing leaves the total unchanged.
+    expect(find.text('USh 26,000'), findsOneWidget);
+  });
 }

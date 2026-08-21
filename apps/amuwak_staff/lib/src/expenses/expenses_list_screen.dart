@@ -66,10 +66,13 @@ class ExpensesListScreen extends StatelessWidget {
   }
 }
 
-/// The expenses ledger body: a running total on top, then rows grouped by the
-/// day they were spent (newest first). Stateless and constructor-injected so it
-/// renders in both the dashboard tab and tests without Riverpod.
-class ExpensesListView extends StatelessWidget {
+/// The expenses ledger body: a search field and category filter chips, a
+/// running total below them, then rows grouped by the day they were spent
+/// (newest first). Constructor-injected data so it renders in both the
+/// dashboard tab and tests without Riverpod; holds only the local
+/// search/filter selection as state, mirroring `CustomersListView` and the
+/// Orders tab's `_OrdersBody`.
+class ExpensesListView extends StatefulWidget {
   const ExpensesListView({
     super.key,
     required this.expenses,
@@ -87,38 +90,140 @@ class ExpensesListView extends StatelessWidget {
   final void Function(Expense expense)? onDelete;
 
   @override
+  State<ExpensesListView> createState() => _ExpensesListViewState();
+}
+
+class _ExpensesListViewState extends State<ExpensesListView> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  /// Null means the 'All' chip — no category narrowing.
+  ExpenseCategory? _category;
+
+  // 'All' (null) plus one chip per category, in the enum's declared order —
+  // same list the summary card iterates, so chip order and breakdown order
+  // agree.
+  static const List<ExpenseCategory?> _filters = [
+    null,
+    ...ExpenseCategory.values,
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matches(Expense e) {
+    if (_category != null && e.category != _category) return false;
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    if (e.note.toLowerCase().contains(q)) return true;
+    if (e.category.label.toLowerCase().contains(q)) return true;
+    return false;
+  }
+
+  /// How many of the full, unfiltered expense list fall under [category]
+  /// (or the whole list, for the 'All' chip). Always counts against
+  /// `widget.expenses`, never the search-narrowed list, so a chip's own
+  /// count doesn't shift as the user types — mirrors `OrderFilter.count` in
+  /// `_OrdersBody`. This also keeps each chip's label text distinct from the
+  /// bare category label shown elsewhere (summary card, row), so a
+  /// `find.text(category.label)` lookup in tests can't accidentally match
+  /// the chip too.
+  int _categoryCount(ExpenseCategory? category) => category == null
+      ? widget.expenses.length
+      : widget.expenses.where((e) => e.category == category).length;
+
+  @override
   Widget build(BuildContext context) {
-    if (expenses.isEmpty) {
-      return _EmptyState(onAddExpense: onAddExpense);
+    if (widget.expenses.isEmpty) {
+      return _EmptyState(onAddExpense: widget.onAddExpense);
     }
 
     final theme = Theme.of(context);
-    final sorted = [...expenses]..sort((a, b) => b.spentAt.compareTo(a.spentAt));
+    final visible = widget.expenses.where(_matches).toList();
+    final sorted = [...visible]..sort((a, b) => b.spentAt.compareTo(a.spentAt));
     final groups = _groupByDay(sorted);
 
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.xl),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ExpensesSummaryCard(
-          byCategory: expenses.byCategory,
-          totalUgx: expenses.totalExpenseUgx,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        for (final group in groups) ...[
-          Padding(
-            padding: const EdgeInsets.only(
-                top: AppSpacing.sm, bottom: AppSpacing.sm),
-            child: Text(
-              _dayLabel(group.day),
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.sm,
+          ),
+          child: TextField(
+            key: const Key('expenses_search'),
+            controller: _searchController,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search expenses by note or category',
+              border: OutlineInputBorder(),
             ),
           ),
-          for (final e in group.expenses) ...[
-            _ExpenseRow(expense: e, onDelete: onDelete),
-            const SizedBox(height: AppSpacing.sm),
-          ],
-        ],
+        ),
+        SizedBox(
+          height: 44,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            itemCount: _filters.length,
+            separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+            itemBuilder: (context, i) {
+              final category = _filters[i];
+              final label = category?.label ?? 'All';
+              return Center(
+                child: FilterChip(
+                  key: Key('expenses_chip_${category?.name ?? 'all'}'),
+                  label: Text('$label (${_categoryCount(category)})'),
+                  selected: _category == category,
+                  onSelected: (_) => setState(() => _category = category),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl,
+              0,
+              AppSpacing.xl,
+              AppSpacing.xxl,
+            ),
+            children: [
+              // Always aggregates the full, unfiltered expense list — the
+              // search/category filter only narrows the day-grouped rows
+              // below, so "Total spent" never appears to change mid-filter.
+              _ExpensesSummaryCard(
+                byCategory: widget.expenses.byCategory,
+                totalUgx: widget.expenses.totalExpenseUgx,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              for (final group in groups) ...[
+                Padding(
+                  padding: const EdgeInsets.only(
+                      top: AppSpacing.sm, bottom: AppSpacing.sm),
+                  child: Text(
+                    _dayLabel(group.day),
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                for (final e in group.expenses) ...[
+                  _ExpenseRow(expense: e, onDelete: widget.onDelete),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
