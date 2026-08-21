@@ -13,6 +13,15 @@ const List<String> _monthAbbr = [
 /// dependency; grouping uses the raw date components so it stays deterministic.
 String _dayLabel(DateTime d) => '${d.day} ${_monthAbbr[d.month - 1]} ${d.year}';
 
+/// A small per-category glyph for the row's icon tile. Lives here (not on
+/// [ExpenseCategory] itself) so the model stays free of a Flutter dependency.
+IconData _categoryIcon(ExpenseCategory c) => switch (c) {
+      ExpenseCategory.detergent => Icons.local_laundry_service_outlined,
+      ExpenseCategory.packaging => Icons.inventory_2_outlined,
+      ExpenseCategory.fuel => Icons.local_gas_station_outlined,
+      ExpenseCategory.airtimeMisc => Icons.phone_android_outlined,
+    };
+
 /// Standalone Expenses ledger screen. The dashboard embeds [ExpensesListView]
 /// directly in its Expenses tab (with its own FAB), mirroring how the Daily
 /// Report tab embeds [DailyReportView].
@@ -102,8 +111,10 @@ class ExpensesListView extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          for (final e in group.expenses)
+          for (final e in group.expenses) ...[
             _ExpenseRow(expense: e, onDelete: onDelete),
+            const SizedBox(height: AppSpacing.sm),
+          ],
         ],
       ],
     );
@@ -169,22 +180,52 @@ class _ExpenseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(expense.category.label),
-      subtitle: expense.note.isEmpty ? null : Text(expense.note),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+    final colorScheme = theme.colorScheme;
+    return AppCard(
+      child: Row(
         children: [
-          Text(formatUgx(expense.amountUgx),
-              style: theme.textTheme.titleMedium),
-          if (onDelete != null)
-            IconButton(
-              key: Key('expense_delete_${expense.id}'),
-              tooltip: 'Delete expense',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => onDelete!(expense),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadii.field - 2),
             ),
+            child: Icon(
+              _categoryIcon(expense.category),
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md + 1),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(expense.category.label, style: theme.textTheme.titleMedium),
+                if (expense.note.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.xs / 2),
+                  Text(expense.note, style: theme.textTheme.bodySmall),
+                ],
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                formatUgx(expense.amountUgx),
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              if (onDelete != null)
+                IconButton(
+                  key: Key('expense_delete_${expense.id}'),
+                  tooltip: 'Delete expense',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => onDelete!(expense),
+                ),
+            ],
+          ),
         ],
       ),
     );

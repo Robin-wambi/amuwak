@@ -1,3 +1,4 @@
+import 'package:amuwak_core/amuwak_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -95,6 +96,17 @@ void main() {
     await tester.tap(find.byKey(const Key('expenses_empty_add')));
     await tester.pump();
     expect(addCalls, 1);
+  });
+
+  testWidgets('each expense row renders inside an AppCard', (tester) async {
+    await tester.pumpWidget(_host(ExpensesListView(expenses: [
+      _expense(id: 'a', spentAt: DateTime.utc(2026, 8, 14)),
+      _expense(id: 'b', spentAt: DateTime.utc(2026, 8, 14)),
+    ])));
+
+    // Only the two rows are AppCards — the running-total header is a plain
+    // Card, matching OrderCard's reskin elsewhere in the app.
+    expect(find.byType(AppCard), findsNWidgets(2));
   });
 
   testWidgets('delete affordance reports the tapped expense', (tester) async {
