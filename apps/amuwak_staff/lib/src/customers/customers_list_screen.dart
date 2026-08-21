@@ -108,20 +108,20 @@ class _CustomersListViewState extends State<CustomersListView> {
           child: filtered.isEmpty
               ? const Center(child: Text('No matching customers.'))
               : ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                  ),
                   itemCount: filtered.length,
                   itemBuilder: (context, i) {
                     final c = filtered[i];
-                    final hasAddress =
-                        c.address != null && c.address!.isNotEmpty;
-                    return ListTile(
-                      leading: CircleAvatar(child: Text(_initial(c.name))),
-                      title: Text(c.name),
-                      subtitle: Text(
-                        hasAddress ? '${c.phone} · ${c.address}' : c.phone,
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: _CustomerRow(
+                        customer: c,
+                        onTap: widget.onCustomerTap == null
+                            ? null
+                            : () => widget.onCustomerTap!(c),
                       ),
-                      onTap: widget.onCustomerTap == null
-                          ? null
-                          : () => widget.onCustomerTap!(c),
                     );
                   },
                 ),
@@ -144,6 +144,108 @@ String _digitsOnly(String s) {
     if (unit >= 0x30 && unit <= 0x39) buffer.writeCharCode(unit);
   }
   return buffer.toString();
+}
+
+/// A single customer row, reskinned onto [AppCard] to match the rest of the
+/// app's lists (e.g. `OrderCard`, the expenses `_ExpenseRow`). Tapping opens
+/// the same [CustomerFormScreen] edit flow as before — this widget only
+/// changes what the row looks like, not what tapping it does.
+class _CustomerRow extends StatelessWidget {
+  const _CustomerRow({required this.customer, this.onTap});
+
+  final Customer customer;
+  final VoidCallback? onTap;
+
+  bool get _hasAddress =>
+      customer.address != null && customer.address!.isNotEmpty;
+
+  /// Whitespace-only notes (e.g. a stray space left after clearing the
+  /// field) don't count as "has notes" — matches how the form screen already
+  /// treats a trimmed-empty notes field as null on save.
+  bool get _hasNotes =>
+      customer.notes != null && customer.notes!.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final rate = customer.customRatePerKgUgx;
+
+    return AppCard(
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            backgroundColor: AppColors.white,
+            foregroundColor: AppColors.primary,
+            child: Text(_initial(customer.name)),
+          ),
+          const SizedBox(width: AppSpacing.md + 1),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(customer.name, style: theme.textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.xs / 2),
+                Text(
+                  _hasAddress
+                      ? '${customer.phone} · ${customer.address}'
+                      : customer.phone,
+                  style: theme.textTheme.bodySmall,
+                ),
+                if (rate != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  _RateChip(
+                    key: Key('customer_rate_chip_${customer.id}'),
+                    rateUgx: rate,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (_hasNotes) ...[
+            const SizedBox(width: AppSpacing.sm),
+            Icon(
+              Icons.sticky_note_2_outlined,
+              key: Key('customer_notes_indicator_${customer.id}'),
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The customer's standing per-kg rate override, shown only when one is set.
+/// Rounds the same way `customer_form_screen.dart` rounds a rate for display
+/// (`.round()`) and reuses [formatUgx] as-is — it already prefixes "USh ", so
+/// nothing else here re-adds it.
+class _RateChip extends StatelessWidget {
+  const _RateChip({super.key, required this.rateUgx});
+
+  final double rateUgx;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadii.chip),
+      ),
+      child: Text(
+        '${formatUgx(rateUgx.round())}/kg',
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
 }
 
 class _EmptyState extends StatelessWidget {
