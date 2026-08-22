@@ -218,7 +218,7 @@ class _ExpensesListViewState extends State<ExpensesListView> {
                 ),
                 for (final e in group.expenses) ...[
                   _ExpenseRow(expense: e, onDelete: widget.onDelete),
-                  const SizedBox(height: AppSpacing.sm),
+                  const SizedBox(height: AppSpacing.md),
                 ],
               ],
             ],
@@ -275,7 +275,7 @@ class _ExpensesSummaryCard extends StatelessWidget {
       final amount = byCategory[category];
       if (amount == null) continue;
       if (rows.isNotEmpty) {
-        rows.add(const SizedBox(height: AppSpacing.sm));
+        rows.add(const SizedBox(height: AppSpacing.lg - 2));
       }
       rows.add(_CategoryBreakdownRow(category: category, amountUgx: amount));
     }

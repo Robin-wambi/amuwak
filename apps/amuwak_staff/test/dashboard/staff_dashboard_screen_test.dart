@@ -997,9 +997,14 @@ void main() {
     expect(find.text('New pickup'), findsOneWidget);
 
     // No zero-count flicker: neither the summary "Assigned" tile nor the
-    // "Assigned orders" section header is in the tree during loading.
+    // "Assigned orders" section header is in the tree during loading. The
+    // whole "Business at a glance" section (and its "View all/Less" toggle)
+    // genuinely isn't built yet while `orders` is null, so this checks
+    // something specific to the loading state rather than being trivially
+    // true in every state (the order-count grid is collapsed by default).
     expect(find.text('Assigned'), findsNothing);
     expect(find.text('Assigned orders', skipOffstage: false), findsNothing);
+    expect(find.byKey(const Key('glance_toggle')), findsNothing);
   });
 
   testWidgets('shows the retry button when the stream emits an error',

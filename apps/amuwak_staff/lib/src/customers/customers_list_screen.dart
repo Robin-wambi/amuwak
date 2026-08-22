@@ -109,7 +109,7 @@ class _CustomersListViewState extends State<CustomersListView> {
               ? const Center(child: Text('No matching customers.'))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
+                    horizontal: AppSpacing.xl,
                   ),
                   itemCount: filtered.length,
                   itemBuilder: (context, i) {
@@ -176,7 +176,7 @@ class _CustomerRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
-            backgroundColor: AppColors.white,
+            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
             foregroundColor: AppColors.primary,
             child: Text(_initial(customer.name)),
           ),
@@ -210,6 +210,7 @@ class _CustomerRow extends StatelessWidget {
               key: Key('customer_notes_indicator_${customer.id}'),
               size: 18,
               color: theme.colorScheme.onSurfaceVariant,
+              semanticLabel: 'Has notes',
             ),
           ],
         ],

@@ -1680,7 +1680,7 @@ class _BusinessAtAGlanceState extends ConsumerState<_BusinessAtAGlance> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.xs,
-                  vertical: AppSpacing.xs,
+                  vertical: AppSpacing.md,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
