@@ -75,7 +75,8 @@ void main() {
     await gesture.up();
   });
 
-  testWidgets('activates via Enter and Space when focused', (tester) async {
+  testWidgets('activates via Enter, numpad Enter, and Space when focused',
+      (tester) async {
     var tapCount = 0;
     await tester.pumpWidget(
       MaterialApp(
@@ -95,8 +96,44 @@ void main() {
     await tester.pump();
     expect(tapCount, 1);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyEvent(LogicalKeyboardKey.numpadEnter);
     await tester.pump();
     expect(tapCount, 2);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(tapCount, 3);
+  });
+
+  testWidgets('shows a focus outline while focused and hides it once unfocused',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PressableScale(
+            onTap: () {},
+            child: const SizedBox(width: 100, height: 100),
+          ),
+        ),
+      ),
+    );
+
+    Decoration? outlineDecoration() => tester
+        .widget<Container>(find.descendant(
+          of: find.byType(PressableScale),
+          matching: find.byType(Container),
+        ))
+        .decoration;
+
+    expect(outlineDecoration(), isNull);
+
+    final focusNode = Focus.of(tester.element(find.byType(SizedBox)));
+    focusNode.requestFocus();
+    await tester.pump();
+    expect(outlineDecoration(), isNotNull);
+
+    focusNode.unfocus();
+    await tester.pumpAndSettle();
+    expect(outlineDecoration(), isNull);
   });
 }
