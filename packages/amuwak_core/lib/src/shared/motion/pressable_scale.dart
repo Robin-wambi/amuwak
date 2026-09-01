@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_motion.dart';
 
@@ -6,6 +7,10 @@ import '../theme/app_motion.dart';
 /// on release — a tactile, premium press feedback. Owns the tap via a
 /// [GestureDetector] (so it behaves correctly inside scrollables: a scroll
 /// that wins the gesture arena fires `onTapCancel` and the scale releases).
+///
+/// Also focusable and keyboard-activatable (Enter/Space), with a click
+/// cursor on desktop/web — a `GestureDetector` alone gives none of that,
+/// unlike `InkWell`, so it's added explicitly here.
 ///
 /// Honours the OS reduce-motion setting: when disabled, the scale stays at 1.
 class PressableScale extends StatefulWidget {
@@ -39,15 +44,30 @@ class _PressableScaleState extends State<PressableScale> {
 
     if (widget.onTap == null) return scaled;
 
-    return Semantics(
-      button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        onTapDown: (_) => _setPressed(true),
-        onTapUp: (_) => _setPressed(false),
-        onTapCancel: () => _setPressed(false),
-        child: scaled,
+    return Focus(
+      canRequestFocus: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.space) {
+          widget.onTap!();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Semantics(
+          button: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            onTapDown: (_) => _setPressed(true),
+            onTapUp: (_) => _setPressed(false),
+            onTapCancel: () => _setPressed(false),
+            child: scaled,
+          ),
+        ),
       ),
     );
   }

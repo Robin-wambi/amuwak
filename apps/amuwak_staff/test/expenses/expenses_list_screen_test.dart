@@ -321,5 +321,8 @@ void main() {
 
     // Even a search query that matches nothing leaves the total unchanged.
     expect(find.text('USh 26,000'), findsOneWidget);
+    // ... and the now-empty row list says so instead of just going blank.
+    expect(find.text('No matching expenses.'), findsOneWidget);
+    expect(find.text('omo soap'), findsNothing);
   });
 }

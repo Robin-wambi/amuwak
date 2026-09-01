@@ -206,21 +206,27 @@ class _ExpensesListViewState extends State<ExpensesListView> {
                 totalUgx: widget.expenses.totalExpenseUgx,
               ),
               const SizedBox(height: AppSpacing.lg),
-              for (final group in groups) ...[
-                Padding(
-                  padding: const EdgeInsets.only(
-                      top: AppSpacing.sm, bottom: AppSpacing.sm),
-                  child: Text(
-                    _dayLabel(group.day),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
+              if (groups.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+                  child: Center(child: Text('No matching expenses.')),
+                )
+              else
+                for (final group in groups) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(
+                        top: AppSpacing.sm, bottom: AppSpacing.sm),
+                    child: Text(
+                      _dayLabel(group.day),
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                   ),
-                ),
-                for (final e in group.expenses) ...[
-                  _ExpenseRow(expense: e, onDelete: widget.onDelete),
-                  const SizedBox(height: AppSpacing.md),
+                  for (final e in group.expenses) ...[
+                    _ExpenseRow(expense: e, onDelete: widget.onDelete),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
                 ],
-              ],
             ],
           ),
         ),
