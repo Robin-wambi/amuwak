@@ -130,7 +130,14 @@ void main() {
     final focusNode = Focus.of(tester.element(find.byType(SizedBox)));
     focusNode.requestFocus();
     await tester.pump();
-    expect(outlineDecoration(), isNotNull);
+    final decoration = outlineDecoration();
+    expect(decoration, isNotNull);
+    // Matches AppCard's own corner radius, since every tappable AppCard
+    // routes through here — a mismatched radius would poke past the card.
+    expect(
+      (decoration as BoxDecoration).borderRadius,
+      BorderRadius.circular(AppRadii.card),
+    );
 
     focusNode.unfocus();
     await tester.pumpAndSettle();

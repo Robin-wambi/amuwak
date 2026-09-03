@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_radii.dart';
 
 /// Wraps a [child] so it scales down slightly while pressed, springing back
 /// on release — a tactile, premium press feedback. Owns the tap via a
@@ -80,7 +81,7 @@ class _PressableScaleState extends State<PressableScale> {
               decoration: _focused
                   ? BoxDecoration(
                       border: Border.all(color: AppColors.primary, width: 2),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(AppRadii.card),
                     )
                   : null,
               child: scaled,
