@@ -24,3 +24,6 @@ one ad hoc:
 ```
 scripts/flutter_test.sh apps/amuwak_staff test/dashboard/staff_dashboard_screen_test.dart
 ```
+
+`flutter analyze` has no equivalent wrapper because it takes no per-file
+arguments — run it directly, just keep it in the foreground per rule 1.
